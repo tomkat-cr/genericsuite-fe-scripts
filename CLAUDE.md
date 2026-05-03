@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI Coding Assistants (Claude Code, Gemini CLI, Cursor, Antigravity, etc.) when working with code in this repository.
 
 ## What This Repository Is
 
@@ -18,7 +18,6 @@ make publish          # Publish to npm (runs SAST first; prompts for confirmatio
 UPDATE_SNAPSHOTS=1 make publish  # Publish with updated test snapshots
 
 make sast-test        # Run Snyk security scanning (code + dependencies)
-make agents_md_link   # Create symlink AGENTS.md -> CLAUDE.md
 ```
 
 > Node version: **20** (see `.nvmrc`)
@@ -96,5 +95,5 @@ Security scanning (`sast-test`) is **mandatory** before publishing. The `make pu
 
 ## Important Notes
 
-- The `AGENTS.md` file (if present) is a symlink to `CLAUDE.md` — edit only `CLAUDE.md`.
+- The files `AGENTS.md`, `GEMINI.md`, etc. (if present) have only a referece to `@CLAUDE.md` — edit only `CLAUDE.md`.
 - Skills, commands, rules, and sub-agents are located in the `.claude/` directory.
