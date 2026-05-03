@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "GenericSuite Scripts (frontend version)",
   "author": "Carlos J. Ramirez <info@genericsuite.com>",
-  "license": "ISC",
+  "license": "MIT",
   "files": [
     "scripts",
     "Makefile",
