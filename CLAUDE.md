@@ -80,7 +80,7 @@ From `docs/codeStyle.md`:
 
 Consuming projects must supply (typically via `.env`):
 - `RUN_BUNDLER` — bundler selection (`vite`, `webpack`, `react-app-rewired`)
-- `AWS_S3_BUCKET_NAME`, `AWS_REGION` — for deployment
+- `AWS_S3_BUCKET_NAME_FE_DEV`, `AWS_S3_BUCKET_NAME_FE_QA`, `AWS_S3_BUCKET_NAME_FE_STAGING`, `AWS_S3_BUCKET_NAME_FE_PROD`, `AWS_S3_BUCKET_NAME_FE_DEMO`, `AWS_REGION` — for deployment
 - `APP_FE_URL` — frontend domain
 - `APP_API_URL_DEV`, `APP_API_URL_QA`, etc. — backend endpoints per stage
 - `FRONTEND_LOCAL_PORT` (default: 3000), `BACKEND_LOCAL_PORT` (default: 5000)
@@ -96,4 +96,4 @@ Security scanning (`sast-test`) is **mandatory** before publishing. The `make pu
 ## Important Notes
 
 - The files `AGENTS.md`, `GEMINI.md`, etc. (if present) have only a referece to `@CLAUDE.md` — edit only `CLAUDE.md`.
-- Skills, commands, rules, and sub-agents are located in the `.claude/` directory.
+- Skills live in `.ai/skills/` (source of truth); symlinked under `.agents/skills/`, `.claude/skills/`, `.codex/skills/`, `.gemini/skills/`, and `.devin/skills/`.

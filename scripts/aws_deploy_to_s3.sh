@@ -10,8 +10,15 @@ get_ssl_cert_arn() {
     echo ""
     echo "Fetching ACM Certificate ARN for '${domain_cleaned}'..."
     echo "(Originally: '${domain})"
+
+    AWS_SSL_CERTIFICATE_ARN_BY_TYPE=$(eval "echo \${AWS_SSL_CERTIFICATE_ARN_${VARIABLE_TYPE}}")
+    if [ "${AWS_SSL_CERTIFICATE_ARN_BY_TYPE}" != "" ];then
+        AWS_SSL_CERTIFICATE_ARN="${AWS_SSL_CERTIFICATE_ARN_BY_TYPE}"
+        echo "Using AWS_SSL_CERTIFICATE_ARN_${VARIABLE_TYPE}..."
+    fi
+
     if [ "${AWS_SSL_CERTIFICATE_ARN}" = "" ];then
-        # AWS_SSL_CERTIFICATE_ARN=$(aws acm list-certificates --region ${AWS_REGION} --output text --query "CertificateSummaryList[?DomainName=='${APP_FE_URL}'].CertificateArn | [0]")
+        # AWS_SSL_CERTIFICATE_ARN=$(aws acm list-certificates --region ${AWS_REGION} --output text --query "CertificateSummaryList[?DomainName=='${APP_URL}'].CertificateArn | [0]")
         AWS_SSL_CERTIFICATE_ARN=$(aws acm list-certificates --output text --query "CertificateSummaryList[?DomainName=='${domain_cleaned}'].CertificateArn | [0]")
     fi
     echo ""
@@ -53,31 +60,60 @@ fi
 
 export REACT_APP_VERSION=`cat "version.txt"`
 
+if [ "${ERROR_MSG}" = "" ]; then
+    if [ "$2" = "" ]; then
+        VARIABLE_TYPE="FE" # Frontend default variable type
+    else
+        VARIABLE_TYPE=$(echo $2 | tr '[:lower:]' '[:upper:]')
+    fi
+    echo "VARIABLE_TYPE: ${VARIABLE_TYPE}"
+fi
+
+
 # Name of the S3 bucket
 if [ "${ERROR_MSG}" = "" ]; then
-    if [ "${AWS_S3_BUCKET_NAME}" = "" ];then
-        ERROR_MSG="AWS_S3_BUCKET_NAME is not set"
+    if ! BUCKET_NAME=$(eval "echo \${AWS_S3_BUCKET_NAME_${VARIABLE_TYPE}}")
+    then
+        ERROR_MSG="AWS_S3_BUCKET_NAME_${VARIABLE_TYPE} is not set"
+    fi
+    echo "BUCKET_NAME: ${BUCKET_NAME}"
+fi
+
+if [ "${ERROR_MSG}" = "" ]; then
+    if [ "${BUCKET_NAME}" = "" ];then
+        ERROR_MSG="AWS_S3_BUCKET_NAME_${VARIABLE_TYPE} is not set"
     fi
 fi
+
 # Region of the S3 bucket
 if [ "${ERROR_MSG}" = "" ]; then
     if [ "${AWS_REGION}" = "" ];then
         ERROR_MSG="AWS_REGION is not set"
     fi
 fi
+
+if [ "${ERROR_MSG}" = "" ]; then
+    if ! APP_URL=$(eval "echo \${APP_${VARIABLE_TYPE}_URL}")
+    then
+        ERROR_MSG="APP_${VARIABLE_TYPE}_URL is not set"
+    fi
+    echo "APP_URL: ${APP_URL}"
+fi
+
 # Frontend domain name
 if [ "${ERROR_MSG}" = "" ]; then
-    if [ "${APP_FE_URL}" = "" ];then
-        ERROR_MSG="APP_FE_URL is not set"
+    if [ "${APP_URL}" = "" ];then
+        ERROR_MSG="APP_${VARIABLE_TYPE}_URL is not set"
     fi
 fi
 
 if [ "${ERROR_MSG}" = "" ]; then
-    BUCKET_NAME="${AWS_S3_BUCKET_NAME}"
     if [ "${AWS_PROFILE}" = "" ];then
         AWS_PROFILE="default"
     fi
-    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --output json --no-paginate | jq -r '.Account')
+    CMD="aws sts get-caller-identity --output json --no-paginate --region ${AWS_REGION} --profile ${AWS_PROFILE} | jq -r '.Account'"
+    echo "Getting AWS account ID using command: ${CMD}"
+    AWS_ACCOUNT_ID=$(eval $CMD)
     if [ "${AWS_ACCOUNT_ID}" = "" ];then
         ERROR_MSG="AWS_ACCOUNT_ID could not be retrieved"
     fi
@@ -85,26 +121,26 @@ fi
 
 # Deploy to S3
 if [ "${ERROR_MSG}" = "" ]; then
-    echo "Verifying AWS S3 bucket ${AWS_S3_BUCKET_NAME} existence..."
-    S3_BUCKET_NOT_FOUND=$(aws s3api head-bucket --bucket ${AWS_S3_BUCKET_NAME}  --region ${AWS_REGION} 2>&1 | grep -c 'Not Found')
-    # if ! aws s3api head-bucket --bucket ${AWS_S3_BUCKET_NAME} --region ${AWS_REGION} --output text
+    echo "Verifying AWS S3 bucket $BUCKET_NAME existence..."
+    S3_BUCKET_NOT_FOUND=$(aws s3api head-bucket --bucket $BUCKET_NAME  --region ${AWS_REGION} 2>&1 | grep -c 'Not Found')
+    # if ! aws s3api head-bucket --bucket $BUCKET_NAME --region ${AWS_REGION} --output text
     echo "S3_BUCKET_NOT_FOUND: ${S3_BUCKET_NOT_FOUND}"
     if [ "${S3_BUCKET_NOT_FOUND}" = "1" ];then
 
-        echo "Creating the AWS S3 bucket ${AWS_S3_BUCKET_NAME}..."
+        echo "Creating the AWS S3 bucket $BUCKET_NAME..."
         if [ "${AWS_REGION}" = "us-east-1" ]; then
-            if ! aws s3api create-bucket --bucket ${AWS_S3_BUCKET_NAME} --region ${AWS_REGION} --acl bucket-owner-full-control --output text
+            if ! aws s3api create-bucket --bucket $BUCKET_NAME --region ${AWS_REGION} --acl bucket-owner-full-control --output text
             then
                 ERROR_MSG="ERROR could not create the bucket [1] - Region: ${AWS_REGION}"
             fi
         else
-            if ! aws s3api create-bucket --bucket ${AWS_S3_BUCKET_NAME} --region ${AWS_REGION} --create-bucket-configuration LocationConstraint=${AWS_REGION} --acl bucket-owner-full-control --output text
+            if ! aws s3api create-bucket --bucket ${AWS_S3_BUCKET_NAME_${VARIABLE_TYPE}} --region ${AWS_REGION} --create-bucket-configuration LocationConstraint=${AWS_REGION} --acl bucket-owner-full-control --output text
             then
                 ERROR_MSG="ERROR could not create the bucket [2] - Region: ${AWS_REGION}"
             fi
         fi
     else
-        echo "AWS S3 bucket ${AWS_S3_BUCKET_NAME} exists..."
+        echo "AWS S3 bucket ${AWS_S3_BUCKET_NAME_${VARIABLE_TYPE}} exists..."
     fi
 fi
 
@@ -133,8 +169,8 @@ if [ "${ERROR_MSG}" = "" ]; then
     # Creating CloudFront distribution
     if [ "${DIST_ID}" = "" ]; then
         echo ""
-        echo "Fetching ACM Certificate ARN for ${APP_FE_URL} to create the CloudFront distribution..."
-        domain="${APP_FE_URL}"
+        echo "Fetching ACM Certificate ARN for ${APP_URL} to create the CloudFront distribution..."
+        domain="${APP_URL}"
         get_ssl_cert_arn
    
         if [ "${AWS_SSL_CERTIFICATE_ARN}" = "" ]; then
@@ -163,7 +199,7 @@ if [ "${ERROR_MSG}" = "" ]; then
                 \"Enabled\": true,
                 \"Aliases\": {
                     \"Quantity\": 1,
-                    \"Items\": [\"${APP_FE_URL}\"]
+                    \"Items\": [\"${APP_URL}\"]
                 },
                 \"DefaultRootObject\": \"index.html\",
                 \"Origins\": {
@@ -211,7 +247,7 @@ if [ "${ERROR_MSG}" = "" ]; then
             --query 'Distribution.Id')
 
             if [ "${DIST_ID}" = "" ]; then
-                ERROR_MSG="ERROR: the cloudfront create-distribution for S3 bucket '${BUCKET_NAME}' and Domain '${APP_FE_URL}' failed..."
+                ERROR_MSG="ERROR: the cloudfront create-distribution for S3 bucket '${BUCKET_NAME}' and Domain '${APP_URL}' failed..."
             fi
         fi
     fi
@@ -322,15 +358,15 @@ if [ "${ERROR_MSG}" = "" ]; then
         echo "8) Click on 'Save changes'"
         echo "9) Confirm the operation"
         echo ""
-        echo "To link this S3 bucket to the '${APP_FE_URL}' domain:"
+        echo "To link this S3 bucket to the '${APP_URL}' domain:"
         echo ""
         echo "10) Go to Route 53"
-        echo "11) Click on the Zone corresponding to the domain of '${APP_FE_URL}'"
+        echo "11) Click on the Zone corresponding to the domain of '${APP_URL}'"
         echo "12) Click on 'Create Record'"
-        echo "13) Enter the subdomain part of '${APP_FE_URL}'"
+        echo "13) Enter the subdomain part of '${APP_URL}'"
         echo "14) Enable 'alias'"
         echo "15) In 'Route traffic to' select the 'Alias to CloudFront' option"
-        echo "16) In 'Choose distribution' select the one corresponding to '${APP_FE_URL}'"
+        echo "16) In 'Choose distribution' select the one corresponding to '${APP_URL}'"
         echo "17) Click on 'Create Records'"
         # echo ""
         # echo "To link the backend API to the '${REACT_APP_API_URL}' domain:"

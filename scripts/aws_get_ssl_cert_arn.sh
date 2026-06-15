@@ -3,9 +3,16 @@
 # 2024-04-01 | CR
 
 get_ssl_cert_arn() {
+    local domain_varname=$1
+    local domain=$2
+
+    echo ""
+    echo "domain_varname: '${domain_varname}'"
+    echo "domain: '${domain}'"
+
     echo ""
     echo "NOTE: These 3 warnings '-i used with no filenames on the command line, reading from STDIN.' are normal..."
-    domain_cleaned=$(echo $domain | perl -i -pe 's|https:\/\/||' | perl -i -pe 's|http:\/\/||' | perl -i -pe 's|:.*||')
+    local domain_cleaned=$(echo $domain | perl -i -pe 's|https:\/\/||' | perl -i -pe 's|http:\/\/||' | perl -i -pe 's|:.*||')
 
     echo ""
     echo "Fetching ACM Certificate ARN for '${domain_cleaned}'..."
@@ -42,11 +49,20 @@ if [ "${ERROR_MSG}" = "" ]; then
 fi
 
 if [ "${ERROR_MSG}" = "" ]; then
-    domain="${APP_FE_URL}"
-    get_ssl_cert_arn
+    # Default variable type is "FE"
+    VARIABLE_TYPE="FE"
+    if [ "$1" != "" ];then
+        # If a parameter is provided, use it as the variable type. E.g. "BE" or "WS"
+        VARIABLE_TYPE=$(echo $1 | tr '[:lower:]' '[:upper:]')
+    fi
+    echo "VARIABLE_TYPE: ${VARIABLE_TYPE}"
+
+    # domain="${APP_FE_URL}"
+    domain=$(eval "echo \${APP_${VARIABLE_TYPE}_URL}")
+    get_ssl_cert_arn "APP_${VARIABLE_TYPE}_URL" ${domain}
 
     domain="${REACT_APP_API_URL}"
-    get_ssl_cert_arn
+    get_ssl_cert_arn "REACT_APP_API_URL" ${domain}
 fi
 
 echo ""

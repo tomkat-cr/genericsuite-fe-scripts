@@ -35,6 +35,14 @@ if [ "${ERROR_MSG}" = "" ]; then
         ERROR_MSG="First parameter must be: dev, qa, staging, demo or prod"
     fi
 fi
+# Variable type: "FE" (Frontend), "WS" (Website), etc.
+if [ "${ERROR_MSG}" = "" ]; then
+    if [ "$2" = "" ]; then
+        VARIABLE_TYPE="FE" # Frontend default type
+    else
+        VARIABLE_TYPE=$(echo $2 | tr '[:lower:]' '[:upper:]')
+    fi
+fi
 
 if [ "${ERROR_MSG}" = "" ]; then
     ENV="${1}"
@@ -63,14 +71,14 @@ if [ "${ERROR_MSG}" = "" ]; then
 fi
 
 if [ "${ERROR_MSG}" = "" ]; then
-    target_varname="APP_FE_URL"
-    varname="APP_FE_URL"
+    target_varname="APP_${VARIABLE_TYPE}_URL"
+    varname="APP_${VARIABLE_TYPE}_URL"
     replace_var_in_dot_env
 fi
 
 if [ "${ERROR_MSG}" = "" ]; then
-    target_varname="AWS_S3_BUCKET_NAME"
-    varname="AWS_S3_BUCKET_NAME"
+    target_varname="AWS_S3_BUCKET_NAME_${VARIABLE_TYPE}"
+    varname="AWS_S3_BUCKET_NAME_${VARIABLE_TYPE}"
     replace_var_in_dot_env
 fi
 
@@ -83,8 +91,8 @@ if [ "${ERROR_MSG}" = "" ]; then
     echo "Final values:"
     echo ""
     echo "REACT_APP_API_URL: ${REACT_APP_API_URL}"
-    echo "APP_FE_URL: ${APP_FE_URL}"
-    echo "AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME}"
+    echo "APP_${VARIABLE_TYPE}_URL: ${APP_${VARIABLE_TYPE}_URL}"
+    echo "AWS_S3_BUCKET_NAME_${VARIABLE_TYPE}: ${AWS_S3_BUCKET_NAME_${VARIABLE_TYPE}}"
 fi
 
 echo ""
