@@ -2,10 +2,33 @@
 # File: scripts/aws_deploy_to_s3.sh
 # 2023-07-17 | CR
 
+continue_or_stop() {
+    read -p "Type 'y' and press Enter to continue, any other value to cancel..." var
+    echo ""
+    if [[ "$var" = "Y" || "$var" = "y" ]]; then
+        echo "Continuing..."
+        ERROR_MSG=""
+    else
+        echo "Exiting..."
+    fi
+    echo ""
+}
+
+rename_module_type() {
+    perl -i -pe"s|\"type\": \"module\"|\"type1\": \"module\"|g" package.json
+}
+
+restore_module_type() {
+    perl -i -pe"s|\"type1\": \"module\"|\"type\": \"module\"|g" package.json
+}
+
+clean_domain_name() {
+    echo "$1" | perl -pe 's|^https?://||i; s|[:/].*||; s|\s+||g'
+}
+
 get_ssl_cert_arn() {
     echo ""
-    echo "NOTE: These 3 warnings '-i used with no filenames on the command line, reading from STDIN.' are normal..."
-    domain_cleaned=$(echo $domain | perl -i -pe 's|https:\/\/||' | perl -i -pe 's|http:\/\/||' | perl -i -pe 's|:.*||')
+    domain_cleaned=$(clean_domain_name "${domain}")
 
     echo ""
     echo "Fetching ACM Certificate ARN for '${domain_cleaned}'..."
@@ -97,13 +120,14 @@ if [ "${ERROR_MSG}" = "" ]; then
     then
         ERROR_MSG="APP_${VARIABLE_TYPE}_URL is not set"
     fi
+    APP_URL=$(clean_domain_name "${APP_URL}")
     echo "APP_URL: ${APP_URL}"
 fi
 
 # Frontend domain name
 if [ "${ERROR_MSG}" = "" ]; then
     if [ "${APP_URL}" = "" ];then
-        ERROR_MSG="APP_${VARIABLE_TYPE}_URL is not set"
+        ERROR_MSG="APP_${VARIABLE_TYPE}_URL is not set (or invalid after removing protocol/path)"
     fi
 fi
 
@@ -140,7 +164,7 @@ if [ "${ERROR_MSG}" = "" ]; then
             fi
         fi
     else
-        echo "AWS S3 bucket ${AWS_S3_BUCKET_NAME_${VARIABLE_TYPE}} exists..."
+        echo "AWS S3 bucket $(eval "echo \${AWS_S3_BUCKET_NAME_${VARIABLE_TYPE}}") exists..."
     fi
 fi
 
@@ -174,80 +198,86 @@ if [ "${ERROR_MSG}" = "" ]; then
         get_ssl_cert_arn
    
         if [ "${AWS_SSL_CERTIFICATE_ARN}" = "" ]; then
+            ERROR_MSG="ERROR: ACM Certificate ARN not found for ${domain}"
+
             echo ""
             echo "The ACM (SSL) Certificate ARN not found for ${domain}"
             echo "Do you want to proceed with no domain association? (y/N)"
-            read -p "Type 'y' and press Enter to confirm, any other value to cancel..." var
-            echo ""
-            if [[ "$var" = "Y" || "$var" = "y" ]]; then
+            continue_or_stop
+            if [ "${ERROR_MSG}" = "" ]; then
                 echo "Proceeding with no domain association..."
                 DIST_ID=$(aws cloudfront create-distribution \
                 --origin-domain-name ${BUCKET_NAME}.s3.amazonaws.com \
                 --default-root-object index.html \
                 --output text \
                 --query 'Distribution.Id')
-            else
-                ERROR_MSG="ERROR: ACM Certificate ARN not found for ${domain}"
             fi
         else
-            # https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/example_cloudfront_CreateDistribution_section.html
+            # Check if CloudFront distribution already exists for the domain
+            DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Aliases.Items[0]=='${APP_URL}'].{Id:Id}[0]" --output text)
+            if [ "${DIST_ID}" != "" ]; then
+                echo "CloudFront distribution already exists for the domain ${APP_URL}"
+            else
+                # https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/example_cloudfront_CreateDistribution_section.html
 
-            echo "Creating CloudFront distribution..."
-            DIST_ID=$(aws cloudfront create-distribution \
-            --distribution-config "{
-                \"Comment\": \"CloudFront Distribution for '${BUCKET_NAME}'\",
-                \"Enabled\": true,
-                \"Aliases\": {
-                    \"Quantity\": 1,
-                    \"Items\": [\"${APP_URL}\"]
-                },
-                \"DefaultRootObject\": \"index.html\",
-                \"Origins\": {
-                    \"Quantity\": 1,
-                    \"Items\": [
-                        {
-                            \"Id\": \"${BUCKET_NAME}.s3.amazonaws.com\",
-                            \"DomainName\": \"${BUCKET_NAME}.s3.amazonaws.com\",
-                            \"OriginPath\": \"\",
-                            \"CustomHeaders\": {
+                echo "Creating CloudFront distribution..."
+                DIST_ID=$(aws cloudfront create-distribution \
+                --distribution-config "{
+                    \"Comment\": \"CloudFront Distribution for '${BUCKET_NAME}'\",
+                    \"Enabled\": true,
+                    \"Aliases\": {
+                        \"Quantity\": 1,
+                        \"Items\": [\"${APP_URL}\"]
+                    },
+                    \"DefaultRootObject\": \"index.html\",
+                    \"Origins\": {
+                        \"Quantity\": 1,
+                        \"Items\": [
+                            {
+                                \"Id\": \"${BUCKET_NAME}.s3.amazonaws.com\",
+                                \"DomainName\": \"${BUCKET_NAME}.s3.amazonaws.com\",
+                                \"OriginPath\": \"\",
+                                \"CustomHeaders\": {
+                                    \"Quantity\": 0
+                                },
+                                \"S3OriginConfig\": {
+                                    \"OriginAccessIdentity\": \"\"
+                                }
+                            }
+                        ]
+                    },
+                    \"CallerReference\": \"${BUCKET_NAME}-distribution\",
+                    \"ViewerCertificate\": {
+                        \"CertificateSource\": \"acm\",
+                        \"SSLSupportMethod\": \"sni-only\",
+                        \"ACMCertificateArn\": \"${AWS_SSL_CERTIFICATE_ARN}\",
+                        \"MinimumProtocolVersion\": \"TLSv1.2_2019\"
+                    },
+                    \"DefaultCacheBehavior\": {
+                        \"TargetOriginId\": \"${BUCKET_NAME}.s3.amazonaws.com\",
+                        \"ForwardedValues\": {
+                            \"QueryString\": false,
+                            \"Cookies\": {
+                                \"Forward\": \"none\"
+                            },
+                            \"Headers\": {
                                 \"Quantity\": 0
                             },
-                            \"S3OriginConfig\": {
-                                \"OriginAccessIdentity\": \"\"
+                            \"QueryStringCacheKeys\": {
+                                \"Quantity\": 0
                             }
-                        }
-                    ]
-                },
-                \"CallerReference\": \"${BUCKET_NAME}-distribution\",
-                \"ViewerCertificate\": {
-                    \"CertificateSource\": \"acm\",
-                    \"SSLSupportMethod\": \"sni-only\",
-                    \"ACMCertificateArn\": \"${AWS_SSL_CERTIFICATE_ARN}\",
-                    \"MinimumProtocolVersion\": \"TLSv1.2_2019\"
-                },
-                \"DefaultCacheBehavior\": {
-                    \"TargetOriginId\": \"${BUCKET_NAME}.s3.amazonaws.com\",
-                    \"ForwardedValues\": {
-                        \"QueryString\": false,
-                        \"Cookies\": {
-                            \"Forward\": \"none\"
                         },
-                        \"Headers\": {
-                            \"Quantity\": 0
-                        },
-                        \"QueryStringCacheKeys\": {
-                            \"Quantity\": 0
-                        }
-                    },
-                    \"MinTTL\": 0,
-                    \"ViewerProtocolPolicy\": \"allow-all\"
-                }
-            }" \
-            --output text \
-            --query 'Distribution.Id')
+                        \"MinTTL\": 0,
+                        \"ViewerProtocolPolicy\": \"allow-all\"
+                    }
+                }" \
+                --output text \
+                --query 'Distribution.Id')
 
-            if [ "${DIST_ID}" = "" ]; then
-                ERROR_MSG="ERROR: the cloudfront create-distribution for S3 bucket '${BUCKET_NAME}' and Domain '${APP_URL}' failed..."
+                if [ "${DIST_ID}" = "" ]; then
+                    ERROR_MSG="ERROR: the cloudfront create-distribution for S3 bucket '${BUCKET_NAME}' and Domain '${APP_URL}' failed..."
+                    continue_or_stop
+                fi
             fi
         fi
     fi
@@ -383,14 +413,7 @@ if [ "${ERROR_MSG}" = "" ]; then
         echo ""
         echo "Then retry this script..."
         echo ""
-        read -p "Type 'y' and press Enter to continue, any other value to cancel..." var
-        echo ""
-        if [[ "$var" = "Y" || "$var" = "y" ]]; then
-            echo "Continuing..."
-            ERROR_MSG=""
-        else
-            echo "Exiting..."
-        fi
+        continue_or_stop
     fi    
 fi
 
@@ -431,7 +454,12 @@ if [ "${ERROR_MSG}" = "" ]; then
     fi
 
     # Prevent ERR_REQUIRE_ESM on libraries
-    perl -i -pe"s|\"type\": \"module\"|\"type1\": \"module\"|g" package.json
+    if [ "${PRESERVE_MODULE_TYPE}" != "1" ]; then
+        rename_module_type
+    else
+        echo "Preserving module type in package.json"
+        restore_module_type
+    fi
 fi
 
 # Build the ReactJS project
@@ -505,7 +533,7 @@ if [ "${ERROR_MSG}" = "" ]; then
     fi
 
     # Revert prevent ERR_REQUIRE_ESM on libraries
-    perl -i -pe"s|\"type1\": \"module\"|\"type\": \"module\"|g" package.json
+    restore_module_type
 
     if [ "${TSCONFIG_BASE_URL}" = "./src/lib" ]; then
         echo ""

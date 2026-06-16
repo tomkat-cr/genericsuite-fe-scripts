@@ -91,8 +91,8 @@ if [ "${ERROR_MSG}" = "" ]; then
     echo "Final values:"
     echo ""
     echo "REACT_APP_API_URL: ${REACT_APP_API_URL}"
-    echo "APP_${VARIABLE_TYPE}_URL: ${APP_${VARIABLE_TYPE}_URL}"
-    echo "AWS_S3_BUCKET_NAME_${VARIABLE_TYPE}: ${AWS_S3_BUCKET_NAME_${VARIABLE_TYPE}}"
+    echo "APP_${VARIABLE_TYPE}_URL: $(eval "echo \${APP_${VARIABLE_TYPE}_URL}")"
+    echo "AWS_S3_BUCKET_NAME_${VARIABLE_TYPE}: $(eval "echo \${AWS_S3_BUCKET_NAME_${VARIABLE_TYPE}}")"
 fi
 
 echo ""
