@@ -64,10 +64,19 @@ cd "${REPO_BASEDIR}"
 # Defaults
 
 if [ "${RUN_BUNDLER}" = "" ]; then
+    echo "RUN_BUNDLER is not set, setting default to vite"
     RUN_BUNDLER="vite"
 fi
 
-UPDATE_BUILD="1"
+if [ "${UPDATE_BUILD}" = "" ]; then
+    echo "UPDATE_BUILD is not set, setting default to 1"
+    UPDATE_BUILD="1"
+fi
+
+if [ "${BUILD_DIR}" = "" ]; then
+    echo "BUILD_DIR is not set, setting default to build"
+    BUILD_DIR="build"
+fi
 
 ENV_FILESPEC=""
 if [ -f "${REPO_BASEDIR}/.env" ]; then
@@ -158,13 +167,13 @@ if [ "${ERROR_MSG}" = "" ]; then
                 ERROR_MSG="ERROR could not create the bucket [1] - Region: ${AWS_REGION}"
             fi
         else
-            if ! aws s3api create-bucket --bucket ${AWS_S3_BUCKET_NAME_${VARIABLE_TYPE}} --region ${AWS_REGION} --create-bucket-configuration LocationConstraint=${AWS_REGION} --acl bucket-owner-full-control --output text
+            if ! aws s3api create-bucket --bucket $BUCKET_NAME --region ${AWS_REGION} --create-bucket-configuration LocationConstraint=${AWS_REGION} --acl bucket-owner-full-control --output text
             then
                 ERROR_MSG="ERROR could not create the bucket [2] - Region: ${AWS_REGION}"
             fi
         fi
     else
-        echo "AWS S3 bucket $(eval "echo \${AWS_S3_BUCKET_NAME_${VARIABLE_TYPE}}") exists..."
+        echo "AWS S3 bucket $BUCKET_NAME exists..."
     fi
 fi
 
@@ -215,7 +224,7 @@ if [ "${ERROR_MSG}" = "" ]; then
         else
             # Check if CloudFront distribution already exists for the domain
             DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Aliases.Items[0]=='${APP_URL}'].{Id:Id}[0]" --output text)
-            if [ "${DIST_ID}" != "" ]; then
+            if [ "${DIST_ID}" != "" ] && [ "${DIST_ID}" != "None" ] && [ "${DIST_ID}" != "null" ] && [ "${DIST_ID}" != "NULL" ] && [ "${DIST_ID}" != "Null" ]; then
                 echo "CloudFront distribution already exists for the domain ${APP_URL}"
             else
                 # https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/example_cloudfront_CreateDistribution_section.html
@@ -427,38 +436,40 @@ fi
 
 if [ "${ERROR_MSG}" = "" ]; then
 
-    sh "${SCRIPTS_DIR}/run_method_dependency_manager.sh" install ${RUN_BUNDLER}
+    if [ "${RUN_BUNDLER}" != "none" ]; then
+        sh "${SCRIPTS_DIR}/run_method_dependency_manager.sh" install ${RUN_BUNDLER}
 
-    export TSCONFIG_BASE_URL=$(perl -ne 'print $1 if /"baseUrl":\s*"([^"]*)"/' tsconfig.json)
-    echo "tsconfig.json TSCONFIG_BASE_URL was: ${TSCONFIG_BASE_URL}"
+        export TSCONFIG_BASE_URL=$(perl -ne 'print $1 if /"baseUrl":\s*"([^"]*)"/' tsconfig.json)
+        echo "tsconfig.json TSCONFIG_BASE_URL was: ${TSCONFIG_BASE_URL}"
 
-    if [ "${TSCONFIG_BASE_URL}" = "./src/lib" ]; then
-        echo "Preparing tsconfig.json for local build test..."
-        perl -i -pe"s|\"baseUrl\": \"./src/lib\"|\"baseUrl\": \"./src\"|g" tsconfig.json
-    fi
+        if [ "${TSCONFIG_BASE_URL}" = "./src/lib" ]; then
+            echo "Preparing tsconfig.json for local build test..."
+            perl -i -pe"s|\"baseUrl\": \"./src/lib\"|\"baseUrl\": \"./src\"|g" tsconfig.json
+        fi
 
-    export PREV_HOME_PAGE=$(perl -ne 'print $1 if /"homepage":\s*"([^"]*)"/' package.json)
-    export DEPLOYMENT_HOME_PAGE="https:\/\/${DOMAIN_NAME}"
+        export PREV_HOME_PAGE=$(perl -ne 'print $1 if /"homepage":\s*"([^"]*)"/' package.json)
+        export DEPLOYMENT_HOME_PAGE="https:\/\/${DOMAIN_NAME}"
 
-    echo ""
-    echo "Updating package.json homepage with cloudfront domain..."
-    echo ""
-    echo "Previous homepage: ${PREV_HOME_PAGE}"
-    echo "Assigned homepage during deployment: ${DEPLOYMENT_HOME_PAGE}"
-    echo ""
-    if ! perl -i -pe"s|\"homepage\":.*|\"homepage\": \"${DEPLOYMENT_HOME_PAGE}\",|g" package.json
-    then
-        ERROR_MSG='ERROR updating package.json homepage with cloudfront domain $DOMAIN_NAME'
-    else
-        echo "package.json homepage updated"
-    fi
+        echo ""
+        echo "Updating package.json homepage with cloudfront domain..."
+        echo ""
+        echo "Previous homepage: ${PREV_HOME_PAGE}"
+        echo "Assigned homepage during deployment: ${DEPLOYMENT_HOME_PAGE}"
+        echo ""
+        if ! perl -i -pe"s|\"homepage\":.*|\"homepage\": \"${DEPLOYMENT_HOME_PAGE}\",|g" package.json
+        then
+            ERROR_MSG='ERROR updating package.json homepage with cloudfront domain $DOMAIN_NAME'
+        else
+            echo "package.json homepage updated"
+        fi
 
-    # Prevent ERR_REQUIRE_ESM on libraries
-    if [ "${PRESERVE_MODULE_TYPE}" != "1" ]; then
-        rename_module_type
-    else
-        echo "Preserving module type in package.json"
-        restore_module_type
+        # Prevent ERR_REQUIRE_ESM on libraries
+        if [ "${PRESERVE_MODULE_TYPE}" != "1" ]; then
+            rename_module_type
+        else
+            echo "Preserving module type in package.json"
+            restore_module_type
+        fi
     fi
 fi
 
@@ -481,7 +492,6 @@ if [ "${ERROR_MSG}" = "" ]; then
             else
                 run_command="npx react-app-rewired build"
             fi
-            # if ! npm run build-prod
             if ! ${run_command}
             then
                 ERROR_MSG="ERROR-010 running ${run_command}"
@@ -495,7 +505,6 @@ if [ "${ERROR_MSG}" = "" ]; then
             else
                 run_command="npx react-app-rewired build"
             fi
-            # if ! npm run build-dev
             if ! ${run_command}
             then
                 ERROR_MSG="ERROR-020 running ${run_command}"
@@ -513,32 +522,32 @@ if [ "${ERROR_MSG}" = "" ]; then
 fi
 
 if [ "${ERROR_MSG}" = "" ]; then
-    if [ "${UPDATE_BUILD}" = "1" ]; then
-        echo "Deploying to AWS S3..."
-        if ! aws s3 sync build s3://${BUCKET_NAME} --acl bucket-owner-full-control --delete --region ${AWS_REGION} --output text
-        then
-            ERROR_MSG="ERROR running aws s3 sync build/ s3://${BUCKET_NAME} --acl bucket-owner-full-control --delete --region ${AWS_REGION} --output text"
-        fi
+    echo "Deploying to AWS S3..."
+    if ! aws s3 sync "${BUILD_DIR}" s3://${BUCKET_NAME} --acl bucket-owner-full-control --delete --region ${AWS_REGION} --output text
+    then
+        ERROR_MSG="ERROR running aws s3 sync build/ s3://${BUCKET_NAME} --acl bucket-owner-full-control --delete --region ${AWS_REGION} --output text"
     fi
 fi
 
 if [ "${ERROR_MSG}" = "" ]; then
 
-    echo "Updating package.json homepage (Restore)..."
-    # if ! perl -i -pe"s|\"homepage\": \"https:\/\/$DOMAIN_NAME\"|\"homepage\": \"https:\/\/${GITHUB_USERNAME}.github.io\/${GITHUB_REPONAME}\/\"|g" package.json
-    if ! perl -i -pe"s|\"homepage\":.*|\"homepage\": \"${PREV_HOME_PAGE}\",|g" package.json
-    then
-        # ERROR_MSG="ERROR running perl -i -pe's|\"homepage\": \"https:\/\/$DOMAIN_NAME\/\"|\"homepage\": \"https:\/\/${GITHUB_USERNAME}.github.io\/${GITHUB_REPONAME}\/\"|g' package.json"
-        ERROR_MSG="ERROR running perl -i -pe\"s|\"homepage\":.*|\"homepage\": \"${PREV_HOME_PAGE}\",|g\" package.json"
-    fi
+    if [ "${RUN_BUNDLER}" != "none" ]; then
+        echo "Updating package.json homepage (Restore)..."
+        # if ! perl -i -pe"s|\"homepage\": \"https:\/\/$DOMAIN_NAME\"|\"homepage\": \"https:\/\/${GITHUB_USERNAME}.github.io\/${GITHUB_REPONAME}\/\"|g" package.json
+        if ! perl -i -pe"s|\"homepage\":.*|\"homepage\": \"${PREV_HOME_PAGE}\",|g" package.json
+        then
+            # ERROR_MSG="ERROR running perl -i -pe's|\"homepage\": \"https:\/\/$DOMAIN_NAME\/\"|\"homepage\": \"https:\/\/${GITHUB_USERNAME}.github.io\/${GITHUB_REPONAME}\/\"|g' package.json"
+            ERROR_MSG="ERROR running perl -i -pe\"s|\"homepage\":.*|\"homepage\": \"${PREV_HOME_PAGE}\",|g\" package.json"
+        fi
 
-    # Revert prevent ERR_REQUIRE_ESM on libraries
-    restore_module_type
+        # Revert prevent ERR_REQUIRE_ESM on libraries
+        restore_module_type
 
-    if [ "${TSCONFIG_BASE_URL}" = "./src/lib" ]; then
-        echo ""
-        echo "tsconfig.json TSCONFIG_BASE_URL will be restored to: ${TSCONFIG_BASE_URL}"
-        perl -i -pe"s|\"baseUrl\": \"./src\"|\"baseUrl\": \"./src/lib\"|g" tsconfig.json
+        if [ "${TSCONFIG_BASE_URL}" = "./src/lib" ]; then
+            echo ""
+            echo "tsconfig.json TSCONFIG_BASE_URL will be restored to: ${TSCONFIG_BASE_URL}"
+            perl -i -pe"s|\"baseUrl\": \"./src\"|\"baseUrl\": \"./src/lib\"|g" tsconfig.json
+        fi
     fi
 fi
 
