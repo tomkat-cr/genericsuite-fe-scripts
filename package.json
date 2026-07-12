@@ -12,7 +12,8 @@
   ],
   "scripts": {
     "publish": "bash scripts/npm_publish.sh publish",
-    "pre-publish": "bash scripts/npm_publish.sh pre-publish"
+    "pre-publish": "bash scripts/npm_publish.sh pre-publish",
+    "test": "echo \"No test necessary for genericsuite-fe-scripts\""
   },
   "repository": {
     "type": "git",
