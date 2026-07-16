@@ -56,11 +56,24 @@ if [ "${RUN_BUNDLER}" != "none" ] && [ "${UPDATE_BUILD}" = "1" ]; then
     sh "${FE_SCRIPTS_DIR}/run_method_dependency_manager.sh" install "${RUN_BUNDLER}"
 
     TSCONFIG_BASE_URL="$(perl -ne 'print $1 if /"baseUrl":\s*"([^"]*)"/' tsconfig.json)"
+    PREV_HOME_PAGE="$(perl -ne 'print $1 if /"homepage":\s*"([^"]*)"/' package.json)"
+
+    # Restore package.json / tsconfig.json even if the build below fails
+    restore_pkg_files() {
+        if [ "${PREV_HOME_PAGE:-}" != "" ]; then
+            perl -i -pe "s|\"homepage\":.*|\"homepage\": \"${PREV_HOME_PAGE}\",|g" package.json || true
+        fi
+        perl -i -pe 's|"type1": "module"|"type": "module"|g' package.json || true
+        if [ "${TSCONFIG_BASE_URL:-}" = "./src/lib" ]; then
+            perl -i -pe 's|"baseUrl": "./src"|"baseUrl": "./src/lib"|g' tsconfig.json || true
+        fi
+    }
+    trap restore_pkg_files EXIT
+
     if [ "${TSCONFIG_BASE_URL}" = "./src/lib" ]; then
         perl -i -pe 's|"baseUrl": "./src/lib"|"baseUrl": "./src"|g' tsconfig.json
     fi
 
-    PREV_HOME_PAGE="$(perl -ne 'print $1 if /"homepage":\s*"([^"]*)"/' package.json)"
     perl -i -pe "s|\"homepage\":.*|\"homepage\": \"https://${DOMAIN_NAME}\",|g" package.json
 
     if [ "${PRESERVE_MODULE_TYPE:-0}" != "1" ]; then
@@ -84,13 +97,6 @@ if [ "${RUN_BUNDLER}" != "none" ] && [ "${UPDATE_BUILD}" = "1" ]; then
 
     # shellcheck disable=SC1091
     source "${FE_SCRIPTS_DIR}/build_copy_images.sh" "" ""
-
-    # Restore package.json / tsconfig.json
-    perl -i -pe "s|\"homepage\":.*|\"homepage\": \"${PREV_HOME_PAGE}\",|g" package.json
-    perl -i -pe 's|"type1": "module"|"type": "module"|g' package.json
-    if [ "${TSCONFIG_BASE_URL}" = "./src/lib" ]; then
-        perl -i -pe 's|"baseUrl": "./src"|"baseUrl": "./src/lib"|g' tsconfig.json
-    fi
 fi
 
 # 4) Sync to S3 (no ACLs: bucket is private, served through OAC)

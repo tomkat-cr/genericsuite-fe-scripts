@@ -20,7 +20,7 @@ variable "aliases" {
 }
 
 variable "acm_certificate_arn" {
-  description = "ACM certificate ARN (us-east-1); empty tries lookup by first alias"
+  description = "Resolved ACM certificate ARN (us-east-1), passed in by the caller; empty disables custom viewer certificate"
   type        = string
   default     = ""
 }

@@ -2,22 +2,8 @@ locals {
   use_aliases = length(var.aliases) > 0
 }
 
-provider "aws" {
-  alias  = "us_east_1"
-  region = "us-east-1"
-}
-
-data "aws_acm_certificate" "lookup" {
-  count    = local.use_aliases && var.acm_certificate_arn == "" ? 1 : 0
-  provider = aws.us_east_1
-  domain   = var.aliases[0]
-  statuses = ["ISSUED"]
-}
-
 locals {
-  certificate_arn = var.acm_certificate_arn != "" ? var.acm_certificate_arn : (
-    local.use_aliases ? data.aws_acm_certificate.lookup[0].arn : ""
-  )
+  certificate_arn = local.use_aliases ? var.acm_certificate_arn : ""
 }
 
 resource "aws_s3_bucket" "this" {
