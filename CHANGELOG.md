@@ -17,7 +17,7 @@ This project adheres to [Semantic Versioning](http://semver.org/) and [Keep a Ch
 ### Security
 
 
-## [1.0.0] - 2026-04-19
+## [1.0.0] - 2026-07-15
 
 ### Added
 - Create the frontend scripts library [GS-107].
