@@ -8,6 +8,8 @@ This project adheres to [Semantic Versioning](http://semver.org/) and [Keep a Ch
 
 ### Added
 
+- OpenTofu (Terraform-compatible) IaC frontend deployment in `scripts/aws_tf`: `frontend-hosting` module (private S3 + CloudFront with Origin Access Control, redirect-to-https, TLSv1.2_2021, SPA error routing) and `aws_tf_deploy_to_s3.sh` full pipeline (tofu apply + build + S3 sync + CloudFront invalidation), with S3 remote state — parallel to the existing `aws_deploy_to_s3.sh`, which remains unchanged [GS-334].
+
 ### Changed
 
 ### Fixed
