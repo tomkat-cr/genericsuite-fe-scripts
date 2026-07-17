@@ -84,6 +84,13 @@ resource "aws_cloudfront_distribution" "this" {
     ssl_support_method             = local.certificate_arn != "" ? "sni-only" : null
     minimum_protocol_version       = local.certificate_arn != "" ? "TLSv1.2_2021" : null
   }
+
+  lifecycle {
+    precondition {
+      condition     = length(var.aliases) == 0 || var.acm_certificate_arn != ""
+      error_message = "A custom domain (aliases) requires an ACM certificate in us-east-1. Set AWS_SSL_CERTIFICATE_ARN[_FE] in .env, or ensure an ISSUED certificate exists for the domain so the stack can look it up."
+    }
+  }
 }
 
 data "aws_iam_policy_document" "bucket" {
