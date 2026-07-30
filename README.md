@@ -8,9 +8,9 @@
     title="GenericSuite logo by Carlos J. Ramirez"
 />
 
-[GenericSuite](https://www.carlosjramirez.com/genericsuite/) is a versatile frontend solution, designed to provide a comprehensive suite of features for ReactJS UI.
+[GenericSuite](https://genericsuite.carlosjramirez.com) is a versatile frontend solution, designed to provide a comprehensive suite of features for ReactJS UI.
 
-This repository contains the scripts necessary to build and deploy Frontend/UI apps using [The GenericSuite](https://www.carlosjramirez.com/genericsuite/).
+This repository contains the scripts necessary to build and deploy Frontend/UI apps using [The GenericSuite](https://www.carlosjramirez.com/en/genericsuite/).
 
 ## Features
 

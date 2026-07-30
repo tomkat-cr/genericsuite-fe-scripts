@@ -4,11 +4,9 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/) and [Keep a Changelog](http://keepachangelog.com/).
 
 
-## [Unreleased]
+## [Unreleased] - YYYY-MM-DD
 
 ### Added
-
-- OpenTofu (Terraform-compatible) IaC frontend deployment in `scripts/aws_tf`: `frontend-hosting` module (private S3 + CloudFront with Origin Access Control, redirect-to-https, TLSv1.2_2021, SPA error routing) and `aws_tf_deploy_to_s3.sh` full pipeline (tofu apply + build + S3 sync + CloudFront invalidation), with S3 remote state — parallel to the existing `aws_deploy_to_s3.sh`, which remains unchanged [GS-334].
 
 ### Changed
 
@@ -24,6 +22,7 @@ This project adheres to [Semantic Versioning](http://semver.org/) and [Keep a Ch
 ### Added
 - Create the frontend scripts library [GS-107].
 - AGENTS.md, GEMINI.md, and CLAUDE.md files to provide context and instructions to AI Coding Assistants [GS-303].
+- OpenTofu (Terraform-compatible) IaC frontend deployment in `scripts/aws_tf`: `frontend-hosting` module (private S3 + CloudFront with Origin Access Control, redirect-to-https, TLSv1.2_2021, SPA error routing) and `aws_tf_deploy_to_s3.sh` full pipeline (tofu apply + build + S3 sync + CloudFront invalidation), with S3 remote state — parallel to the existing `aws_deploy_to_s3.sh`, which remains unchanged [GS-334].
 
 ### Changed
 - Change FE S3 deployment to be used on Landing Pages [GS-328].
