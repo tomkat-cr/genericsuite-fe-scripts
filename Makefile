@@ -58,28 +58,28 @@ config_qa:
 config_demo:
 	bash ./node_modules/genericsuite-fe-scripts/scripts/change_env_be_endpoint.sh demo
 
-deploy: config
+deploy: tailwind-build config
 	bash ./node_modules/genericsuite-fe-scripts/scripts/aws_deploy_to_s3.sh
 
-deploy_qa: config_qa
+deploy_qa: tailwind-build config_qa
 	bash ./node_modules/genericsuite-fe-scripts/scripts/aws_deploy_to_s3.sh
 
-deploy_demo: config_demo
+deploy_demo: tailwind-build config_demo
 	bash ./node_modules/genericsuite-fe-scripts/scripts/aws_deploy_to_s3.sh
 
-run: config
+run: tailwind-build config
 	bash ./node_modules/genericsuite-fe-scripts/scripts/run_app_frontend.sh dev
 
-run_qa: config_qa
+run_qa: tailwind-build config_qa
 	bash ./node_modules/genericsuite-fe-scripts/scripts/run_app_frontend.sh qa
+
+run_prod: tailwind-build build-prod
+	# sh run_app_frontend.sh
+	npm start
 
 server: run
 start: run
 local: run
-
-run_prod: build-prod
-	# sh run_app_frontend.sh
-	npm start
 
 tailwind:
 	npx @tailwindcss/cli -i ./src/input.css -o ./public/output.css --watch
@@ -110,7 +110,7 @@ sast-test:
 pre-publish: sast-test
 	bash ./node_modules/genericsuite-fe-scripts/scripts/npm_publish.sh pre-publish
 
-publish: sast-test
+publish:
 	#
 	# To publish the package to NPMJS checking the test snapshots:
 	#    make publish

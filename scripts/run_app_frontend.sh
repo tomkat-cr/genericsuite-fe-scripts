@@ -164,9 +164,10 @@ run_app() {
         turn_on_module
 
     else
-        run_command="npm run start-dev"
-        # This does not work... the package.json "start-dev" script must be used
-        # run_command="npx react-app-rewired start"
+        # This does not work...
+        #   run_command="npx react-app-rewired start"
+        # the package.json "start-dev:react-app-rewired" script must be used
+        run_command="npm run start-dev:react-app-rewired"
         if ! ${run_command}
         then
             echo "ERROR running: react-app-rewired (${run_command})"
@@ -188,4 +189,3 @@ if [ "${STAGE_UPPERCASE}" = "PROD" ]; then
 fi
 
 remove_symlinks
-

@@ -121,8 +121,8 @@ WEBPACK_INSTALLED=$(perl -ne 'print $1 if /"webpack-dev-server":\s*"([^"]*)"/' p
 
 VITE_PACKAGES="vite @vitejs/plugin-react vite-plugin-require @tailwindcss/vite"
 # WEBPACK_PACKAGES="webpack webpack-cli webpack-dev-server html-webpack-plugin interpolate-html-plugin @babel/cli @babel/core @babel/plugin-proposal-private-property-in-object @babel/plugin-syntax-jsx @babel/plugin-transform-class-properties @babel/preset-env @babel/preset-react @babel/preset-stage-0 @babel/preset-typescript babel-loader babel-plugin-css-modules-transform"
-WEBPACK_PACKAGES="webpack webpack-cli webpack-dev-server html-webpack-plugin interpolate-html-plugin"
-REACT_APP_REWIRED_PACKAGES="react-app-rewired react-scripts"
+WEBPACK_PACKAGES="webpack webpack-cli webpack-dev-server html-webpack-plugin interpolate-html-plugin css-loader postcss-loader style-loader os-browserify url crypto-browserify stream-browserify vm-browserify tty-browserify constants-browserify process"
+REACT_APP_REWIRED_PACKAGES="react-app-rewired react-scripts os-browserify url crypto-browserify stream-browserify vm-browserify tty-browserify"
 
 echo ""
 echo "***********************************"
