@@ -20,7 +20,7 @@ UPDATE_SNAPSHOTS=1 make publish  # Publish with updated test snapshots
 make sast-test        # Run Snyk security scanning (code + dependencies)
 ```
 
-> Node version: **20** (see `.nvmrc`)
+> Node.js version: **26** (see `.nvmrc`)
 
 ## Architecture
 

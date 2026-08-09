@@ -28,3 +28,6 @@ This project adheres to [Semantic Versioning](http://semver.org/) and [Keep a Ch
 - Change FE S3 deployment to be used on Landing Pages [GS-328].
 - Rename AWS_S3_BUCKET_NAME to AWS_S3_BUCKET_NAME_FE in the .env file and scripts [GS-328].
 - Enhance `aws_deploy_to_s3.sh`: Set default values for RUN_BUNDLER, UPDATE_BUILD, and BUILD_DIR if not specified via CLI. Improve bucket name handling and CloudFront distribution checks. Update package.json homepage during deployment and restore after completion only if RUN_BUNDLER != none. Use BUILD_DIR to set the build directory, so mobile deployment -that's not react-vite- can be done.
+
+### Security
+- Bump Node.js version in .nvmrc to 26 [GS-339].
