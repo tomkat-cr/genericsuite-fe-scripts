@@ -8,7 +8,7 @@ set -euo pipefail
 BUCKET_NAME="${1:-}"
 AWS_REGION="${2:-}"
 
-if [ "${BUCKET_NAME}" = "" ] || [ "${AWS_REGION}" = "" ]; then
+if [ "${BUCKET_NAME:-}" = "" ] || [ "${AWS_REGION:-}" = "" ]; then
     echo "Usage: $0 BUCKET_NAME AWS_REGION"
     exit 1
 fi

@@ -2,29 +2,31 @@
 # run_app_frontend.sh
 # 2023-11-28 | CR
 
+set -euo pipefail
+
 REPO_BASEDIR="`pwd`"
 cd "`dirname "$0"`" ;
 SCRIPTS_DIR="`pwd`" ;
 cd "${REPO_BASEDIR}"
 
 turn_off_module() {
-    sh "${SCRIPTS_DIR}/run_change_module_setting.sh" off
+    bash "${SCRIPTS_DIR}/run_change_module_setting.sh" off
 }
 
 turn_on_module() {
-    sh "${SCRIPTS_DIR}/run_change_module_setting.sh" on
+    bash "${SCRIPTS_DIR}/run_change_module_setting.sh" on
 }
 
 create_symlinks() {
-    sh "${SCRIPTS_DIR}/run_symlinks_handler.sh" create
+    bash "${SCRIPTS_DIR}/run_symlinks_handler.sh" create
 }
 
 remove_symlinks() {
-    sh "${SCRIPTS_DIR}/run_symlinks_handler.sh" remove
+    bash "${SCRIPTS_DIR}/run_symlinks_handler.sh" remove
 }
 
 # Defaults
-if [ "${RUN_BUNDLER}" = "" ]; then
+if [ "${RUN_BUNDLER:-}" = "" ]; then
     RUN_BUNDLER="vite"
 fi
 
@@ -39,7 +41,7 @@ RUN_PROTOCOL_AND_PORT_REPLACEMENT=1
 # Read environment variables from .env file
 set -o allexport; source ".env" ; set +o allexport ;
 
-STAGE="$1"
+STAGE="${1:-}"
 STAGE_UPPERCASE=$(echo "${STAGE}" | tr '[:lower:]' '[:upper:]')
 # Check stage is valid
 if [ "${STAGE_UPPERCASE}" != "DEV" ] && [ "${STAGE_UPPERCASE}" != "QA" ] && [ "${STAGE_UPPERCASE}" != "PROD" ] && [ "${STAGE_UPPERCASE}" != "DEMO" ]; then
@@ -56,7 +58,7 @@ echo "USE_CONTAINERS_ENGINE_APP = ${USE_CONTAINERS_ENGINE_APP}"
 echo "RUN_PROTOCOL_AND_PORT_REPLACEMENT = ${RUN_PROTOCOL_AND_PORT_REPLACEMENT}"
 echo ""
 if [ "${STAGE_UPPERCASE}" = "DEV" ]; then
-    if [ "${RUN_PROTOCOL}" != "" ]; then
+    if [ "${RUN_PROTOCOL:-}" != "" ]; then
         if [ "${RUN_PROTOCOL}" = "http" ]; then
             choice="1"
         elif [ "${RUN_PROTOCOL}" = "https" ]; then
@@ -67,20 +69,22 @@ if [ "${STAGE_UPPERCASE}" = "DEV" ]; then
         fi
     else
         echo "Do you want to run: 1) http, 2) https ?"
-        read choice
+        read choice < /dev/tty
+
         while [[ ! $choice =~ ^[12]$ ]]; do
             echo "Please enter 1 or 2"
-            read choice
+            read choice < /dev/tty
+
         done
     fi
-    if [ "${FRONTEND_LOCAL_PORT}" = "" ]; then
+    if [ "${FRONTEND_LOCAL_PORT:-}" = "" ]; then
         FRONTEND_LOCAL_PORT="3000"
     fi
-    if [ "${BACKEND_LOCAL_PORT}" = "" ]; then
+    if [ "${BACKEND_LOCAL_PORT:-}" = "" ]; then
         BACKEND_LOCAL_PORT="5000"
     fi
-    if [ "${APP_LOCAL_DOMAIN_NAME}" = "" ]; then
-        if [ "${REACT_APP_APP_NAME}" = "" ]; then
+    if [ "${APP_LOCAL_DOMAIN_NAME:-}" = "" ]; then
+        if [ "${REACT_APP_APP_NAME:-}" = "" ]; then
             echo "ERROR: REACT_APP_APP_NAME environment variable not defined"
             exit 1
         fi
@@ -136,7 +140,7 @@ echo "REACT_APP_VERSION = ${REACT_APP_VERSION}"
 
 run_app() {
     # Check if dependencies are installed
-    sh "${SCRIPTS_DIR}/run_method_dependency_manager.sh" install ${RUN_BUNDLER}
+    bash "${SCRIPTS_DIR}/run_method_dependency_manager.sh" install ${RUN_BUNDLER}
 
     # Run app dependending on the run method
     if [ "${RUN_BUNDLER}" = "webpack" ]; then

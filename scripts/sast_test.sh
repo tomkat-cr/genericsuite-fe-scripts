@@ -2,13 +2,14 @@
 # scripts/sast_test.sh
 # 2026-04-17 | CR
 
+set -euo pipefail
+
 FAILED_TESTS="0"
 
 run() {
     echo ""
-    echo "Run: $@"
-    $@
-    if [ $? -ne 0 ]; then
+    echo "Run: $*"
+    if ! "$@"; then
         FAILED_TESTS="1"
     fi
 }
@@ -23,7 +24,7 @@ verify_envvar() {
 ask_to_continue() {
     echo ""
     echo "Do you want to continue? (y/n)"
-    read -r answer
+    read -r answer < /dev/tty
     if [ "${answer}" != "y" ]; then
         exit 1
     fi
@@ -31,9 +32,9 @@ ask_to_continue() {
 
 set -o allexport; source .env ; set +o allexport ;
 
-verify_envvar "${SNYK_ENVIRONMENT}" "SNYK_ENVIRONMENT"
-verify_envvar "${SNYK_ORG}" "SNYK_ORG"
-verify_envvar "${SNYK_API_KEY}" "SNYK_API_KEY"
+verify_envvar "${SNYK_ENVIRONMENT:-}" "SNYK_ENVIRONMENT"
+verify_envvar "${SNYK_ORG:-}" "SNYK_ORG"
+verify_envvar "${SNYK_API_KEY:-}" "SNYK_API_KEY"
 
 run snyk config environment "${SNYK_ENVIRONMENT}"
 if ! snyk auth "${SNYK_API_KEY}"; then
@@ -49,12 +50,12 @@ if ! snyk auth "${SNYK_API_KEY}"; then
         exit 1
     fi
 fi
-run snyk code test --severity-threshold=high --org="${SNYK_ORG}" --all-projects ${SNYK_ADDITIONAL_FLAGS} .
-run snyk test --severity-threshold=high --org="${SNYK_ORG}" --all-projects ${SNYK_ADDITIONAL_FLAGS} .
+run snyk code test --severity-threshold=high --org="${SNYK_ORG}" --all-projects ${SNYK_ADDITIONAL_FLAGS:-} .
+run snyk test --severity-threshold=high --org="${SNYK_ORG}" --all-projects ${SNYK_ADDITIONAL_FLAGS:-} .
 
 if [ "${FAILED_TESTS}" = "1" ]; then
     echo "SAST tests failed"
-    if [ "${CICD}" = "1" ]; then
+    if [ "${CICD:-}" = "1" ]; then
         exit 1
     else
         ask_to_continue

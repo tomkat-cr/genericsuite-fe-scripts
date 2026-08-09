@@ -2,6 +2,8 @@
 # File: scripts/aws_get_ssl_cert_arn.sh
 # 2024-04-01 | CR
 
+set -euo pipefail
+
 get_ssl_cert_arn() {
     local domain_varname=$1
     local domain=$2
@@ -42,31 +44,32 @@ if [ -f "${REPO_BASEDIR}/.env" ]; then
 else
     ERROR_MSG="ERROR .env file doesn't exist"
 fi
-if [ "${ERROR_MSG}" = "" ]; then
-    if [ "${ENV_FILESPEC}" != "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
+    if [ "${ENV_FILESPEC:-}" != "" ]; then
         set -o allexport; source ${ENV_FILESPEC}; set +o allexport ;
     fi
 fi
 
-if [ "${ERROR_MSG}" = "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
     # Default variable type is "FE"
     VARIABLE_TYPE="FE"
-    if [ "$1" != "" ];then
+    if [ "${1:-}" != "" ];then
         # If a parameter is provided, use it as the variable type. E.g. "BE" or "WS"
         VARIABLE_TYPE=$(echo $1 | tr '[:lower:]' '[:upper:]')
     fi
     echo "VARIABLE_TYPE: ${VARIABLE_TYPE}"
 
     # domain="${APP_FE_URL}"
-    domain=$(eval "echo \${APP_${VARIABLE_TYPE}_URL}")
-    get_ssl_cert_arn "APP_${VARIABLE_TYPE}_URL" ${domain}
+    varname_app_url="APP_${VARIABLE_TYPE}_URL"
+    domain="${!varname_app_url:-}"
+    get_ssl_cert_arn "APP_${VARIABLE_TYPE}_URL" "${domain}"
 
     domain="${REACT_APP_API_URL}"
     get_ssl_cert_arn "REACT_APP_API_URL" ${domain}
 fi
 
 echo ""
-if [ "${ERROR_MSG}" = "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
     echo "Done..."
 else
     echo "ERROR: ${ERROR_MSG}"

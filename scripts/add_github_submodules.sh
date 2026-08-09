@@ -1,7 +1,9 @@
-#!/bin/sh
+#!/bin/bash
 # File: scripts/add_github_submodules.sh
 # 2023-07-21 | CR
 #
+set -euo pipefail
+
 ERROR_MSG=""
 
 REPO_BASEDIR="`pwd`"
@@ -14,20 +16,20 @@ if [ "$ENV_FILESPEC" != "" ]; then
     set -o allexport; source ${ENV_FILESPEC}; set +o allexport ;
 fi
 
-if [ "${ERROR_MSG}" = "" ]; then
-    if [ "${GIT_SUBMODULE_URL}" = "" ];then
+if [ "${ERROR_MSG:-}" = "" ]; then
+    if [ "${GIT_SUBMODULE_URL:-}" = "" ];then
         ERROR_MSG="GIT_SUBMODULE_URL is not set"
     fi
 fi
 
-if [ "${ERROR_MSG}" = "" ]; then
-    if [ "${GIT_SUBMODULE_LOCAL_PATH_FRONTEND}" = "" ];then
+if [ "${ERROR_MSG:-}" = "" ]; then
+    if [ "${GIT_SUBMODULE_LOCAL_PATH_FRONTEND:-}" = "" ];then
         ERROR_MSG="GIT_SUBMODULE_LOCAL_PATH_FRONTEND is not set"
     fi
 fi
 
-if [ "${ERROR_MSG}" = "" ]; then
-    if [ "$1" != "--force" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
+    if [ "${1:-}" != "--force" ]; then
         if ! git config --global url.https://github.com/.insteadOf git://github.com/
         then
             ERROR_MSG="Failed to set git config"
@@ -35,7 +37,7 @@ if [ "${ERROR_MSG}" = "" ]; then
     fi
 fi
 
-if [ "${ERROR_MSG}" = "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
     echo ""
     echo "Repo base dir: ${REPO_BASEDIR}"
     if ! cd "${REPO_BASEDIR}"
@@ -44,8 +46,8 @@ if [ "${ERROR_MSG}" = "" ]; then
     fi
 fi
 
-if [ "${ERROR_MSG}" = "" ]; then
-    if [ "$1" = "--force" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
+    if [ "${1:-}" = "--force" ]; then
         echo ""
         echo "FORCING Adding submodule: ${GIT_SUBMODULE_URL}"
         echo "To: ${GIT_SUBMODULE_LOCAL_PATH_FRONTEND}"
@@ -69,7 +71,7 @@ if [ "${ERROR_MSG}" = "" ]; then
         echo ""
     fi
 fi
-if [ "${ERROR_MSG}" = "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
     if [ ! -d "${GIT_SUBMODULE_LOCAL_PATH_FRONTEND}" ]; then
         echo ""
         echo "Adding submodule: ${GIT_SUBMODULE_URL}"
@@ -148,7 +150,7 @@ if [ "${ERROR_MSG}" = "" ]; then
     fi
 fi
 
-if [ "${ERROR_MSG}" = "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
     echo "SUCCESS"
 else
     echo "ERROR: ${ERROR_MSG}"

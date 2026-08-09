@@ -3,13 +3,15 @@
 #
 # 2024-03-16 | CR
 #
-TARGET_DIR="$1"
-if [ "${TARGET_DIR}" = "" ]; then
+set -euo pipefail
+
+TARGET_DIR="${1:-}"
+if [ "${TARGET_DIR:-}" = "" ]; then
     TARGET_DIR="build"
 fi
 
-BASE_DIR="$2"
-if [ "${BASE_DIR}" = "" ]; then
+BASE_DIR="${2:-}"
+if [ "${BASE_DIR:-}" = "" ]; then
     BASE_DIR="."
 fi
 

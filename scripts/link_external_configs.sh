@@ -9,22 +9,24 @@
 # diff: Compares project and source JSON configs directory.
 # remove: Restores the original backup "src/configs_backup".
 
+set -euo pipefail
+
 validations_and_assignments() {
-    if [ "${TARGET_CONFIG_PATH}" = "" ]; then
+    if [ "${TARGET_CONFIG_PATH:-}" = "" ]; then
         TARGET_CONFIG_PATH="${GIT_SUBMODULE_LOCAL_PATH_FRONTEND:-"src/configs"}"
     fi
 
-    if [ "${TARGET_CONFIG_PATH}" = "" ]; then
+    if [ "${TARGET_CONFIG_PATH:-}" = "" ]; then
         echo "ERROR: TARGET_CONFIG_PATH is not set"
         exit 1
     fi
 
-    if [ "${SOURCE_CONFIG_PATH}" = "" ]; then
+    if [ "${SOURCE_CONFIG_PATH:-}" = "" ]; then
         echo "ERROR: SOURCE_CONFIG_PATH is not set"
         exit 1
     fi
 
-    if [ "${LINK_EXT_ACTION}" = "" ]; then
+    if [ "${LINK_EXT_ACTION:-}" = "" ]; then
         echo "ERROR: LINK_EXT_ACTION is not set. Options: create, remove"
         exit 1
     fi
@@ -120,19 +122,18 @@ compare_directories() {
     echo "---------------------------------------------------------"
     # -r: recursive, -q: brief (only report if files differ)
     # Use -u for a detailed diff if you prefer
-    diff -rq "${TARGET_CONFIG_PATH}" "${SOURCE_CONFIG_PATH}"
-    
-    # Check if there are any differences
-    if [ $? -eq 0 ]; then
+    if diff -rq "${TARGET_CONFIG_PATH}" "${SOURCE_CONFIG_PATH}"; then
         echo "No differences found."
     fi
     echo "---------------------------------------------------------"
 }
 
 read_confirmation() {
+
     echo ""
     echo "Are you sure you want proceed? (y/n): "
-    read
+    read REPLY < /dev/tty
+
     echo    # move to a new line
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         echo "Canceling operation..."
@@ -144,19 +145,21 @@ create_confirmation() {
     echo "I will move '${TARGET_CONFIG_PATH}' to '${TARGET_CONFIG_PATH}_backup'"
     echo "and sync '${SOURCE_CONFIG_PATH}' to '${TARGET_CONFIG_PATH}' via rsync"
     read_confirmation
+
 }
 
 remove_confirmation() {
     echo "I will remove synced directory '${TARGET_CONFIG_PATH}'"
     echo "and move '${TARGET_CONFIG_PATH}_backup' to '${TARGET_CONFIG_PATH}'"
     read_confirmation
+
 }
 
 # Start
 
-LINK_EXT_ACTION="$1"
-SOURCE_CONFIG_PATH="$2"
-TARGET_CONFIG_PATH="$3"
+LINK_EXT_ACTION="${1:-}"
+SOURCE_CONFIG_PATH="${2:-}"
+TARGET_CONFIG_PATH="${3:-}"
 
 # Read environment variables from .env file
 set -o allexport; source ".env" ; set +o allexport ;
@@ -167,7 +170,7 @@ echo ""
 echo "LINK_EXT_ACTION: ${LINK_EXT_ACTION}"
 echo "SOURCE_CONFIG_PATH: ${SOURCE_CONFIG_PATH}"
 echo "TARGET_CONFIG_PATH: ${TARGET_CONFIG_PATH:-${GIT_SUBMODULE_LOCAL_PATH_FRONTEND:-"src/configs"}}"
-echo "GIT_SUBMODULE_LOCAL_PATH_FRONTEND: ${GIT_SUBMODULE_LOCAL_PATH_FRONTEND}"
+echo "GIT_SUBMODULE_LOCAL_PATH_FRONTEND: ${GIT_SUBMODULE_LOCAL_PATH_FRONTEND:-}"
 echo ""
 
 validations_and_assignments
@@ -181,6 +184,7 @@ elif [ "${LINK_EXT_ACTION}" = "remove" ]; then
 elif [ "${LINK_EXT_ACTION}" = "push" ]; then
     echo "I will sync '${TARGET_CONFIG_PATH}' back to '${SOURCE_CONFIG_PATH}'"
     read_confirmation
+
     push_changes
 elif [ "${LINK_EXT_ACTION}" = "diff" ]; then
     compare_directories

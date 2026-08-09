@@ -2,6 +2,8 @@
 # run_change_module_setting.sh
 # 2025-04-28 | CR
 
+set -euo pipefail
+
 REPO_BASEDIR="`pwd`"
 if [ ! -f "${REPO_BASEDIR}/package.json" ]; then
     REPO_BASEDIR="`pwd`/.."
@@ -28,9 +30,9 @@ turn_on_module() {
     perl -i -pe"s|\"module1\":|\"module\":|g" "${REPO_BASEDIR}/package.json"
 }
 
-if [ "${1}" = "off" ]; then
+if [ "${1:-}" = "off" ]; then
     turn_off_module
-elif [ "${1}" = "on" ]; then
+elif [ "${1:-}" = "on" ]; then
     turn_on_module
 else
     echo "Usage: ${0} [off|on]"

@@ -2,7 +2,7 @@
 # File: scripts/npm_publish.sh
 #
 # Run:
-#   sh scripts/npm_publish.sh pre-publish|publish
+#   bash scripts/npm_publish.sh pre-publish|publish
 #
 # Options (Defaults to "pre-publish"):
 #   pre-publish:  npm run build && npm test
@@ -11,19 +11,21 @@
 # 2024-03-16 | CR
 #
 
+set -euo pipefail
+
 show_date_time() {
-  if [ "${APP_TZ}" = "" ]; then
+  if [ "${APP_TZ:-}" = "" ]; then
     APP_TZ='America/New_York'
   fi
   TZ="${APP_TZ}" date
 }
 
 turn_on_module() {
-    sh "${SCRIPTS_DIR}/run_change_module_setting.sh" on
+    bash "${SCRIPTS_DIR}/run_change_module_setting.sh" on
 }
 
 destroy_symlinks() {
-    sh "${SCRIPTS_DIR}/run_symlinks_handler.sh" remove
+    bash "${SCRIPTS_DIR}/run_symlinks_handler.sh" remove
 }
 
 rebuild_css() {
@@ -55,15 +57,17 @@ check_one_bundle() {
     bundle_name="$2"
     echo ""
     echo "Checking ${bundle_name} installation... (${bundle_installed})"
-    if [ "${bundle_installed}" != "" ]; then
+    if [ "${bundle_installed:-}" != "" ]; then
         echo ""
         echo "It's highly recommended to remove ${bundle_name}."
         echo "(current installed version: ${bundle_installed})"
         echo "Do you want to proceed (y/n)?"
-        read answer
+        read answer < /dev/tty
+
         while [[ ! $answer =~ ^[YyNn]$ ]]; do
             echo "Please enter Y or N"
-            read answer
+            read answer < /dev/tty
+
         done
         if [[ $answer =~ ^[Yy]$ ]]; then
             if ! bash "${SCRIPTS_DIR}/run_method_dependency_manager.sh" uninstall ${bundle_name}
@@ -82,12 +86,12 @@ cd "${REPO_BASEDIR}"
 
 # Defaults
 
-if [ "${RUN_BUNDLER}" = "" ]; then
+if [ "${RUN_BUNDLER:-}" = "" ]; then
     RUN_BUNDLER="vite"
 fi
 
-ACTION="$1"
-if [ -z "${ACTION}" ]; then
+ACTION="${1:-}"
+if [ -z "${ACTION:-}" ]; then
   ACTION="pre-publish"
 fi
 
@@ -98,11 +102,11 @@ destroy_symlinks
 rebuild_css
 
 export PACKAGE_NAME=$(perl -ne 'print $1 if /"name":\s*"([^"]*)"/' package.json)
-if [ "${PACKAGE_NAME}" = "" ]; then
+if [ "${PACKAGE_NAME:-}" = "" ]; then
     PACKAGE_NAME="N/A"
 fi
 export PACKAGE_VERSION=$(perl -ne 'print $1 if /"version":\s*"([^"]*)"/' package.json)
-if [ "${PACKAGE_VERSION}" = "" ]; then
+if [ "${PACKAGE_VERSION:-}" = "" ]; then
     PACKAGE_VERSION="N/A"
 fi
 
@@ -118,7 +122,7 @@ echo "Testing app..."
 # install_remove_requirements install
 
 RUN_TEST_CMD="npm run test"
-if [ "${UPDATE_SNAPSHOTS}" = "1" ]; then
+if [ "${UPDATE_SNAPSHOTS:-}" = "1" ]; then
     RUN_TEST_CMD="npm test -- -u"
 fi
 
@@ -127,7 +131,7 @@ if ! ${RUN_TEST_CMD}
 then
     ERROR_MSG="ERROR running: ${RUN_TEST_CMD}"
 fi
-if [ "${ERROR_MSG}" != "" ]; then
+if [ "${ERROR_MSG:-}" != "" ]; then
     echo "${ERROR_MSG}"
     exit 1
 fi
@@ -147,7 +151,7 @@ then
 fi
 
 # install_remove_requirements remove
-if [ "${ERROR_MSG}" != "" ]; then
+if [ "${ERROR_MSG:-}" != "" ]; then
     echo "${ERROR_MSG}"
     exit 1
 fi
@@ -155,7 +159,8 @@ fi
 if [ "${ACTION}" = "publish" ]; then
     echo ""
     echo "Are you sure you want to publish ${PACKAGE_NAME}:${PACKAGE_VERSION} (y/n)?"
-    read answer
+    read answer < /dev/tty
+
     if [ "${answer}" = "y" ]; then
         npm publish --access=public
     fi

@@ -19,7 +19,7 @@ STAGE="${1:-}"
 VARIABLE_TYPE="$(echo "${2:-FE}" | tr '[:lower:]' '[:upper:]')"
 export VARIABLE_TYPE
 
-if [ "${STAGE}" = "" ]; then
+if [ "${STAGE:-}" = "" ]; then
     echo "Usage: $0 STAGE [VARIABLE_TYPE]"
     exit 1
 fi
@@ -53,7 +53,7 @@ echo "Bucket: ${BUCKET_NAME} | CloudFront: ${DIST_ID} (${DOMAIN_NAME})"
 
 # 3) Build the app (same flow as aws_deploy_to_s3.sh)
 if [ "${RUN_BUNDLER}" != "none" ] && [ "${UPDATE_BUILD}" = "1" ]; then
-    sh "${FE_SCRIPTS_DIR}/run_method_dependency_manager.sh" install "${RUN_BUNDLER}"
+    bash "${FE_SCRIPTS_DIR}/run_method_dependency_manager.sh" install "${RUN_BUNDLER}"
 
     TSCONFIG_BASE_URL="$(perl -ne 'print $1 if /"baseUrl":\s*"([^"]*)"/' tsconfig.json)"
     PREV_HOME_PAGE="$(perl -ne 'print $1 if /"homepage":\s*"([^"]*)"/' package.json)"
@@ -80,7 +80,7 @@ if [ "${RUN_BUNDLER}" != "none" ] && [ "${UPDATE_BUILD}" = "1" ]; then
         perl -i -pe 's|"type": "module"|"type1": "module"|g' package.json
     fi
 
-    sh "${FE_SCRIPTS_DIR}/run_symlinks_handler.sh" remove
+    bash "${FE_SCRIPTS_DIR}/run_symlinks_handler.sh" remove
 
     echo "Building React app... (${RUN_BUNDLER})"
     if [ "${RUN_BUNDLER}" = "webpack" ]; then

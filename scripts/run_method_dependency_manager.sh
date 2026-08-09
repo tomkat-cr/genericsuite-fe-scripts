@@ -3,9 +3,11 @@
 # 2025-05-04 | CR
 #
 
+set -euo pipefail
+
 help() {
     echo ""
-    echo "Usage: sh run_method_dependency_manager.sh <action> <run-method> <run-lib>"
+    echo "Usage: bash run_method_dependency_manager.sh <action> <run-method> <run-lib>"
     echo ""
     echo "The action could be: install, uninstall"
     echo "The run method could be: vite, webpack, react-scripts"
@@ -22,7 +24,7 @@ uninstall_one_bundle() {
     bundle_packages="$3"
     echo ""
     echo "Checking ${bundle_name} installation: '${bundle_installed}'"
-    if [ "${bundle_installed}" = "" ]; then
+    if [ "${bundle_installed:-}" = "" ]; then
         echo "${bundle_name} not installed..."
     else
         echo "Removing ${bundle_name} bundle..."
@@ -43,7 +45,7 @@ install_one_bundle() {
     bundle_name="$2"
     bundle_packages="$3"
     additional_options="$4"
-    if [ "${bundle_installed}" = "" ]; then
+    if [ "${bundle_installed:-}" = "" ]; then
         echo ""
         echo "Installing ${bundle_name} bundle..."
         echo "npm install ${INSTALL_OPTIONS} ${additional_options} ${bundle_packages}"
@@ -98,18 +100,18 @@ uninstall() {
 
 # Defaults
 
-ACTION="$1"
-if [ -z "${ACTION}" ]; then
+ACTION="${1:-}"
+if [ -z "${ACTION:-}" ]; then
     help
 fi
 
-RUN_BUNDLER="$2"
-if [ "${RUN_BUNDLER}" = "" ]; then
+RUN_BUNDLER="${2:-}"
+if [ "${RUN_BUNDLER:-}" = "" ]; then
     help
 fi
 
-RUN_LIB="$3"
-if [ "${RUN_LIB}" = "" ]; then
+RUN_LIB="${3:-}"
+if [ "${RUN_LIB:-}" = "" ]; then
     INSTALL_OPTIONS="--save-dev"
 else
     INSTALL_OPTIONS="--save-peer --strict-peer-deps"

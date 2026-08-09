@@ -2,8 +2,11 @@
 # File: scripts/aws_deploy_to_s3.sh
 # 2023-07-17 | CR
 
+set -euo pipefail
+
 continue_or_stop() {
-    read -p "Type 'y' and press Enter to continue, any other value to cancel..." var
+    echo "Type 'y' and press Enter to continue, any other value to cancel..."
+    read var < /dev/tty
     echo ""
     if [[ "$var" = "Y" || "$var" = "y" ]]; then
         echo "Continuing..."
@@ -34,13 +37,14 @@ get_ssl_cert_arn() {
     echo "Fetching ACM Certificate ARN for '${domain_cleaned}'..."
     echo "(Originally: '${domain})"
 
-    AWS_SSL_CERTIFICATE_ARN_BY_TYPE=$(eval "echo \${AWS_SSL_CERTIFICATE_ARN_${VARIABLE_TYPE}}")
-    if [ "${AWS_SSL_CERTIFICATE_ARN_BY_TYPE}" != "" ];then
+    varname_cert="AWS_SSL_CERTIFICATE_ARN_${VARIABLE_TYPE}"
+    AWS_SSL_CERTIFICATE_ARN_BY_TYPE="${!varname_cert:-}"
+    if [ "${AWS_SSL_CERTIFICATE_ARN_BY_TYPE:-}" != "" ];then
         AWS_SSL_CERTIFICATE_ARN="${AWS_SSL_CERTIFICATE_ARN_BY_TYPE}"
         echo "Using AWS_SSL_CERTIFICATE_ARN_${VARIABLE_TYPE}..."
     fi
 
-    if [ "${AWS_SSL_CERTIFICATE_ARN}" = "" ];then
+    if [ "${AWS_SSL_CERTIFICATE_ARN:-}" = "" ];then
         # AWS_SSL_CERTIFICATE_ARN=$(aws acm list-certificates --region ${AWS_REGION} --output text --query "CertificateSummaryList[?DomainName=='${APP_URL}'].CertificateArn | [0]")
         AWS_SSL_CERTIFICATE_ARN=$(aws acm list-certificates --output text --query "CertificateSummaryList[?DomainName=='${domain_cleaned}'].CertificateArn | [0]")
     fi
@@ -54,7 +58,7 @@ get_ssl_cert_arn() {
 }
 
 remove_symlinks() {
-    sh "${SCRIPTS_DIR}/run_symlinks_handler.sh" remove
+    bash "${SCRIPTS_DIR}/run_symlinks_handler.sh" remove
 }
 
 REPO_BASEDIR="`pwd`"
@@ -63,17 +67,17 @@ cd "${REPO_BASEDIR}"
 
 # Defaults
 
-if [ "${RUN_BUNDLER}" = "" ]; then
+if [ "${RUN_BUNDLER:-}" = "" ]; then
     echo "RUN_BUNDLER is not set, setting default to vite"
     RUN_BUNDLER="vite"
 fi
 
-if [ "${UPDATE_BUILD}" = "" ]; then
+if [ "${UPDATE_BUILD:-}" = "" ]; then
     echo "UPDATE_BUILD is not set, setting default to 1"
     UPDATE_BUILD="1"
 fi
 
-if [ "${BUILD_DIR}" = "" ]; then
+if [ "${BUILD_DIR:-}" = "" ]; then
     echo "BUILD_DIR is not set, setting default to build"
     BUILD_DIR="build"
 fi
@@ -84,16 +88,16 @@ if [ -f "${REPO_BASEDIR}/.env" ]; then
 else
     ERROR_MSG="ERROR .env file doesn't exist"
 fi
-if [ "${ERROR_MSG}" = "" ]; then
-    if [ "${ENV_FILESPEC}" != "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
+    if [ "${ENV_FILESPEC:-}" != "" ]; then
         set -o allexport; source ${ENV_FILESPEC}; set +o allexport ;
     fi
 fi
 
 export REACT_APP_VERSION=`cat "version.txt"`
 
-if [ "${ERROR_MSG}" = "" ]; then
-    if [ "$2" = "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
+    if [ "${2:-}" = "" ]; then
         VARIABLE_TYPE="FE" # Frontend default variable type
     else
         VARIABLE_TYPE=$(echo $2 | tr '[:lower:]' '[:upper:]')
@@ -103,57 +107,49 @@ fi
 
 
 # Name of the S3 bucket
-if [ "${ERROR_MSG}" = "" ]; then
-    if ! BUCKET_NAME=$(eval "echo \${AWS_S3_BUCKET_NAME_${VARIABLE_TYPE}}")
-    then
-        ERROR_MSG="AWS_S3_BUCKET_NAME_${VARIABLE_TYPE} is not set"
-    fi
+if [ "${ERROR_MSG:-}" = "" ]; then
+    varname_bucket="AWS_S3_BUCKET_NAME_${VARIABLE_TYPE}"
+    BUCKET_NAME="${!varname_bucket:-}"
     echo "BUCKET_NAME: ${BUCKET_NAME}"
-fi
-
-if [ "${ERROR_MSG}" = "" ]; then
-    if [ "${BUCKET_NAME}" = "" ];then
+    if [ "${BUCKET_NAME:-}" = "" ];then
         ERROR_MSG="AWS_S3_BUCKET_NAME_${VARIABLE_TYPE} is not set"
     fi
 fi
 
 # Region of the S3 bucket
-if [ "${ERROR_MSG}" = "" ]; then
-    if [ "${AWS_REGION}" = "" ];then
+if [ "${ERROR_MSG:-}" = "" ]; then
+    if [ "${AWS_REGION:-}" = "" ];then
         ERROR_MSG="AWS_REGION is not set"
     fi
 fi
 
-if [ "${ERROR_MSG}" = "" ]; then
-    if ! APP_URL=$(eval "echo \${APP_${VARIABLE_TYPE}_URL}")
-    then
-        ERROR_MSG="APP_${VARIABLE_TYPE}_URL is not set"
-    fi
+if [ "${ERROR_MSG:-}" = "" ]; then
+    varname_app_url="APP_${VARIABLE_TYPE}_URL"
+    APP_URL="${!varname_app_url:-}"
     APP_URL=$(clean_domain_name "${APP_URL}")
     echo "APP_URL: ${APP_URL}"
 fi
 
 # Frontend domain name
-if [ "${ERROR_MSG}" = "" ]; then
-    if [ "${APP_URL}" = "" ];then
+if [ "${ERROR_MSG:-}" = "" ]; then
+    if [ "${APP_URL:-}" = "" ];then
         ERROR_MSG="APP_${VARIABLE_TYPE}_URL is not set (or invalid after removing protocol/path)"
     fi
 fi
 
-if [ "${ERROR_MSG}" = "" ]; then
-    if [ "${AWS_PROFILE}" = "" ];then
+if [ "${ERROR_MSG:-}" = "" ]; then
+    if [ "${AWS_PROFILE:-}" = "" ];then
         AWS_PROFILE="default"
     fi
-    CMD="aws sts get-caller-identity --output json --no-paginate --region ${AWS_REGION} --profile ${AWS_PROFILE} | jq -r '.Account'"
-    echo "Getting AWS account ID using command: ${CMD}"
-    AWS_ACCOUNT_ID=$(eval $CMD)
-    if [ "${AWS_ACCOUNT_ID}" = "" ];then
+    echo "Getting AWS account ID..."
+    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --output json --no-paginate --region "${AWS_REGION}" --profile "${AWS_PROFILE}" | jq -r '.Account')
+    if [ "${AWS_ACCOUNT_ID:-}" = "" ];then
         ERROR_MSG="AWS_ACCOUNT_ID could not be retrieved"
     fi
 fi
 
 # Deploy to S3
-if [ "${ERROR_MSG}" = "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
     echo "Verifying AWS S3 bucket $BUCKET_NAME existence..."
     S3_BUCKET_NOT_FOUND=$(aws s3api head-bucket --bucket $BUCKET_NAME  --region ${AWS_REGION} 2>&1 | grep -c 'Not Found')
     # if ! aws s3api head-bucket --bucket $BUCKET_NAME --region ${AWS_REGION} --output text
@@ -161,23 +157,30 @@ if [ "${ERROR_MSG}" = "" ]; then
     if [ "${S3_BUCKET_NOT_FOUND}" = "1" ];then
 
         echo "Creating the AWS S3 bucket $BUCKET_NAME..."
+        # No --acl: buckets created after April 2023 default to Object Ownership
+        # "Bucket owner enforced" (ACLs disabled); --acl would fail with AccessControlListNotSupported.
         if [ "${AWS_REGION}" = "us-east-1" ]; then
-            if ! aws s3api create-bucket --bucket $BUCKET_NAME --region ${AWS_REGION} --acl bucket-owner-full-control --output text
+            if ! aws s3api create-bucket --bucket "$BUCKET_NAME" --region "${AWS_REGION}" --output text
             then
                 ERROR_MSG="ERROR could not create the bucket [1] - Region: ${AWS_REGION}"
             fi
         else
-            if ! aws s3api create-bucket --bucket $BUCKET_NAME --region ${AWS_REGION} --create-bucket-configuration LocationConstraint=${AWS_REGION} --acl bucket-owner-full-control --output text
+            if ! aws s3api create-bucket --bucket "$BUCKET_NAME" --region "${AWS_REGION}" --create-bucket-configuration LocationConstraint="${AWS_REGION}" --output text
             then
                 ERROR_MSG="ERROR could not create the bucket [2] - Region: ${AWS_REGION}"
             fi
+        fi
+        if [ "${ERROR_MSG:-}" = "" ]; then
+            # Align with Terraform frontend-hosting module: private bucket, ACLs off.
+            aws s3api put-bucket-ownership-controls --bucket "$BUCKET_NAME" --ownership-controls 'Rules=[{ObjectOwnership=BucketOwnerEnforced}]' --region "${AWS_REGION}" --output text
+            aws s3api put-public-access-block --bucket "$BUCKET_NAME" --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" --region "${AWS_REGION}" --output text
         fi
     else
         echo "AWS S3 bucket $BUCKET_NAME exists..."
     fi
 fi
 
-if [ "${ERROR_MSG}" = "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
     echo "Creating/verifying the AWS Cloudfront distribution..."
 
     # Get CloudFront distribution ID
@@ -189,9 +192,8 @@ if [ "${ERROR_MSG}" = "" ]; then
 
     # Verify existence of CloudFront distribution ID
     echo "Verifying CloudFront distribution ID..."
-    if [ "${DIST_ID}" != "" ]; then
-        aws cloudfront get-distribution --id ${DIST_ID} --no-paginate > /dev/null 2>&1
-        if [ $? -eq 0 ]; then
+    if [ "${DIST_ID:-}" != "" ]; then
+        if aws cloudfront get-distribution --id ${DIST_ID} --no-paginate > /dev/null 2>&1; then
             echo "CloudFront Distribution ${DIST_ID} exists"
         else
             echo "CloudFront Distribution ${DIST_ID} does not exist"
@@ -200,20 +202,20 @@ if [ "${ERROR_MSG}" = "" ]; then
     fi
 
     # Creating CloudFront distribution
-    if [ "${DIST_ID}" = "" ]; then
+    if [ "${DIST_ID:-}" = "" ]; then
         echo ""
         echo "Fetching ACM Certificate ARN for ${APP_URL} to create the CloudFront distribution..."
         domain="${APP_URL}"
         get_ssl_cert_arn
    
-        if [ "${AWS_SSL_CERTIFICATE_ARN}" = "" ]; then
+        if [ "${AWS_SSL_CERTIFICATE_ARN:-}" = "" ]; then
             ERROR_MSG="ERROR: ACM Certificate ARN not found for ${domain}"
 
             echo ""
             echo "The ACM (SSL) Certificate ARN not found for ${domain}"
             echo "Do you want to proceed with no domain association? (y/N)"
             continue_or_stop
-            if [ "${ERROR_MSG}" = "" ]; then
+            if [ "${ERROR_MSG:-}" = "" ]; then
                 echo "Proceeding with no domain association..."
                 DIST_ID=$(aws cloudfront create-distribution \
                 --origin-domain-name ${BUCKET_NAME}.s3.amazonaws.com \
@@ -224,7 +226,7 @@ if [ "${ERROR_MSG}" = "" ]; then
         else
             # Check if CloudFront distribution already exists for the domain
             DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Aliases.Items[0]=='${APP_URL}'].{Id:Id}[0]" --output text)
-            if [ "${DIST_ID}" != "" ] && [ "${DIST_ID}" != "None" ] && [ "${DIST_ID}" != "null" ] && [ "${DIST_ID}" != "NULL" ] && [ "${DIST_ID}" != "Null" ]; then
+            if [ "${DIST_ID:-}" != "" ] && [ "${DIST_ID}" != "None" ] && [ "${DIST_ID}" != "null" ] && [ "${DIST_ID}" != "NULL" ] && [ "${DIST_ID}" != "Null" ]; then
                 echo "CloudFront distribution already exists for the domain ${APP_URL}"
             else
                 # https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/example_cloudfront_CreateDistribution_section.html
@@ -283,7 +285,7 @@ if [ "${ERROR_MSG}" = "" ]; then
                 --output text \
                 --query 'Distribution.Id')
 
-                if [ "${DIST_ID}" = "" ]; then
+                if [ "${DIST_ID:-}" = "" ]; then
                     ERROR_MSG="ERROR: the cloudfront create-distribution for S3 bucket '${BUCKET_NAME}' and Domain '${APP_URL}' failed..."
                     continue_or_stop
                 fi
@@ -291,7 +293,7 @@ if [ "${ERROR_MSG}" = "" ]; then
         fi
     fi
 
-    if [ "${ERROR_MSG}" = "" ]; then
+    if [ "${ERROR_MSG:-}" = "" ]; then
         echo ""
         echo "CloudFront distribution ID: $DIST_ID"
         echo ""
@@ -303,14 +305,14 @@ if [ "${ERROR_MSG}" = "" ]; then
             echo "OAI is not enabled. Enabling OAI..."
             OAI_ID=$(aws cloudfront create-cloud-front-origin-access-identity --cloud-front-origin-access-identity-config CallerReference=caller-ref-${BUCKET_NAME},Comment=comment-${BUCKET_NAME} --query 'CloudFrontOriginAccessIdentity.Id' --output text)
             echo "OAI ID: $OAI_ID"
-            if [ "${OAI_ID}" = "" ]; then
+            if [ "${OAI_ID:-}" = "" ]; then
                 ERROR_MSG="ERROR creating OAI"
             fi
         fi
     fi
 fi
 
-if [ "${ERROR_MSG}" = "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
     # Associate the OAI with the distribution:
     echo "Verifying association of OAI with the distribution..."            
 
@@ -320,33 +322,22 @@ if [ "${ERROR_MSG}" = "" ]; then
     OAI_VERIF_CONFIG=$(aws cloudfront get-cloud-front-origin-access-identity-config --id ${OAI_ID} --output text)
     echo "OAI_VERIF_CONFIG: $OAI_VERIF_CONFIG"
 
-    if [ "${OAI_VERIF_CONFIG}" = "" ]; then
+    if [ "${OAI_VERIF_CONFIG:-}" = "" ]; then
         ERROR_MSG="ERROR associating the OAI with the distribution"
     fi
 fi
 
-if [ "${ERROR_MSG}" = "" ]; then
-    # Enable ACLs for the bucket
-    echo "Enable ACLs for the bucket | put-bucket-acl | --acl bucket-owner-full-control"
-    aws s3api put-bucket-acl --bucket $BUCKET_NAME --acl bucket-owner-full-control --profile $AWS_PROFILE  --output text
-
-    # Set ACLs for the bucket owner
-    echo "Set ACLs for the bucket owner | put-bucket-acl | --grant-full-control"
-    aws s3api put-object-acl --bucket $BUCKET_NAME --grant-full-control id=$AWS_ACCOUNT_ID --profile $AWS_PROFILE --output text
-
-    # Set ACLs for Everyone (public access)
-    echo "Set ACLs for Everyone (public access) | put-bucket-acl | --grant-read-acp..."
-    aws s3api put-object-acl --bucket $BUCKET_NAME --grant-read-acp uri=http://acs.amazonaws.com/groups/global/AllUsers --profile $AWS_PROFILE --output text
-    echo "Set ACLs for Everyone (public access) | put-bucket-acl | --grant-listing..."
-    aws s3api put-object-acl --bucket $BUCKET_NAME --grant-listing uri=http://acs.amazonaws.com/groups/global/AllUsers --profile $AWS_PROFILE --output text
-
-    echo "ACL enabled Object Ownership Permissions set successfully!"
+if [ "${ERROR_MSG:-}" = "" ]; then
+    # Keep the bucket private: only the CloudFront OAI may GetObject.
+    # Do not add Principal:"*" (PublicReadGetObject) — that bypasses CloudFront.
+    # Do not use bucket/object ACLs: Object Ownership is BucketOwnerEnforced.
+    echo "Ensuring Object Ownership is BucketOwnerEnforced and public access is blocked..."
+    aws s3api put-bucket-ownership-controls --bucket "$BUCKET_NAME" --ownership-controls 'Rules=[{ObjectOwnership=BucketOwnerEnforced}]' --profile "$AWS_PROFILE" --region "${AWS_REGION}" --output text
+    aws s3api put-public-access-block --bucket "$BUCKET_NAME" --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" --profile "$AWS_PROFILE" --region "${AWS_REGION}" --output text
 fi
 
-# \"Principal\":{\"CanonicalUser\":\"${OAI_ID}\"},
-
-if [ "${ERROR_MSG}" = "" ]; then
-    # Add permissions to the S3 bucket policy to allow access from the OAI:
+if [ "${ERROR_MSG:-}" = "" ]; then
+    # Add permissions to the S3 bucket policy to allow access from the OAI only:
     echo "Adding permissions to the S3 bucket policy to allow access from the OAI..."
     S3_BUCKET_POLICY="{
 \"Version\":\"2012-10-17\",
@@ -357,76 +348,47 @@ if [ "${ERROR_MSG}" = "" ]; then
         \"Principal\":{\"AWS\":\"arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${OAI_ID}\"},
         \"Action\":\"s3:GetObject\",
         \"Resource\":\"arn:aws:s3:::${BUCKET_NAME}/*\"
-    },
-    {
-        \"Sid\":\"PublicReadGetObject\",
-        \"Effect\":\"Allow\",
-        \"Principal\":\"*\",
-        \"Action\":\"s3:GetObject\",
-        \"Resource\":\"arn:aws:s3:::${BUCKET_NAME}/*\"
     }
 ]
 }"
     echo "S3_BUCKET_POLICY: $S3_BUCKET_POLICY"
-    BUCKET_POLICY_RESULT=$(aws s3api put-bucket-policy --bucket ${BUCKET_NAME} --policy "${S3_BUCKET_POLICY}" --output text)
-    if [ $? -eq 0 ]; then
-    # if ! aws s3api put-bucket-policy --bucket ${BUCKET_NAME} --policy "${S3_BUCKET_POLICY}" 
-    # then
-        echo "S3 bucket policy updated"
+    if BUCKET_POLICY_RESULT=$(aws s3api put-bucket-policy --bucket "${BUCKET_NAME}" --policy "${S3_BUCKET_POLICY}" --output text); then
+        echo "S3 bucket policy updated (OAI-only; bucket remains private)"
         echo "BUCKET_POLICY_RESULT: $BUCKET_POLICY_RESULT"
 
-        echo $(aws s3api get-bucket-policy --bucket ${BUCKET_NAME} --output text)
-        echo $(aws cloudfront get-distribution-config --id ${DIST_ID} --output text)
+        echo $(aws s3api get-bucket-policy --bucket "${BUCKET_NAME}" --output text)
+        echo $(aws cloudfront get-distribution-config --id "${DIST_ID}" --output text)
     else
         ERROR_MSG="ERROR running aws s3api put-bucket-policy --bucket ${BUCKET_NAME} --policy ${S3_BUCKET_POLICY}"
         echo ""
         echo "${ERROR_MSG}"
         echo ""
-        echo "Probably this script was unable to deactivate the 'Block all public access' option on the S3 bucket..."
+        echo "The bucket policy could not be applied. Keep 'Block all public access' enabled;"
+        echo "this script only grants s3:GetObject to the CloudFront OAI (not anonymous public read)."
         echo ""
-        echo "To solve this:"
+        echo "Check that:"
+        echo "  - The OAI ID '${OAI_ID}' is valid"
+        echo "  - Your credentials allow s3:PutBucketPolicy on '${BUCKET_NAME}'"
+        echo "  - Object Ownership is BucketOwnerEnforced (ACLs disabled)"
         echo ""
-        echo "1) Go to the AWS Console"
+        echo "To link this S3 bucket to the '${APP_URL}' domain via CloudFront:"
         echo ""
-        echo "2) Go to S3"
-        echo "3) Search for bucket: ${BUCKET_NAME}"
-        echo "4) Click on the bucket name"
-        echo "5) Click on the 'Permissions' tab"
-        echo "6) Click on 'Edit' in the 'Block public access (bucket settings)' section"
-        echo "7) Uncheck 'Block all public access'"
-        echo "8) Click on 'Save changes'"
-        echo "9) Confirm the operation"
-        echo ""
-        echo "To link this S3 bucket to the '${APP_URL}' domain:"
-        echo ""
-        echo "10) Go to Route 53"
-        echo "11) Click on the Zone corresponding to the domain of '${APP_URL}'"
-        echo "12) Click on 'Create Record'"
-        echo "13) Enter the subdomain part of '${APP_URL}'"
-        echo "14) Enable 'alias'"
-        echo "15) In 'Route traffic to' select the 'Alias to CloudFront' option"
-        echo "16) In 'Choose distribution' select the one corresponding to '${APP_URL}'"
-        echo "17) Click on 'Create Records'"
-        # echo ""
-        # echo "To link the backend API to the '${REACT_APP_API_URL}' domain:"
-        # echo ""
-        # echo "18) Go to Route 53"
-        # echo "19) Click on the Zone corresponding to the domain of '${REACT_APP_API_URL}'"
-        # echo "20) Click on 'Create Record'"
-        # echo "21) Enter the subdomain part of '${REACT_APP_API_URL}'"
-        # echo "22) Enable 'alias'"
-        # echo "23) In 'Route traffic to' select the 'Alias to API Gateway API' option"
-        # echo "24) In 'Choose region' select '${AWS_REGION}'"
-        # echo "25) In 'Choose endpoint' select the one corresponding to '${REACT_APP_API_URL}'"
-        # echo "26) Click on 'Create Records'"
+        echo "1) Go to Route 53"
+        echo "2) Click on the Zone corresponding to the domain of '${APP_URL}'"
+        echo "3) Click on 'Create Record'"
+        echo "4) Enter the subdomain part of '${APP_URL}'"
+        echo "5) Enable 'alias'"
+        echo "6) In 'Route traffic to' select the 'Alias to CloudFront' option"
+        echo "7) In 'Choose distribution' select the one corresponding to '${APP_URL}'"
+        echo "8) Click on 'Create Records'"
         echo ""
         echo "Then retry this script..."
         echo ""
         continue_or_stop
-    fi    
+    fi
 fi
 
-if [ "${ERROR_MSG}" = "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
 
     # Get CloudFront domain name
     echo "Getting CloudFront domain name..."
@@ -434,10 +396,10 @@ if [ "${ERROR_MSG}" = "" ]; then
     echo "CloudFront domain name: $DOMAIN_NAME"
 fi
 
-if [ "${ERROR_MSG}" = "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
 
     if [ "${RUN_BUNDLER}" != "none" ]; then
-        sh "${SCRIPTS_DIR}/run_method_dependency_manager.sh" install ${RUN_BUNDLER}
+        bash "${SCRIPTS_DIR}/run_method_dependency_manager.sh" install ${RUN_BUNDLER}
 
         export TSCONFIG_BASE_URL=$(perl -ne 'print $1 if /"baseUrl":\s*"([^"]*)"/' tsconfig.json)
         echo "tsconfig.json TSCONFIG_BASE_URL was: ${TSCONFIG_BASE_URL}"
@@ -458,13 +420,13 @@ if [ "${ERROR_MSG}" = "" ]; then
         echo ""
         if ! perl -i -pe"s|\"homepage\":.*|\"homepage\": \"${DEPLOYMENT_HOME_PAGE}\",|g" package.json
         then
-            ERROR_MSG='ERROR updating package.json homepage with cloudfront domain $DOMAIN_NAME'
+            ERROR_MSG="ERROR updating package.json homepage with cloudfront domain ${DOMAIN_NAME}"
         else
             echo "package.json homepage updated"
         fi
 
         # Prevent ERR_REQUIRE_ESM on libraries
-        if [ "${PRESERVE_MODULE_TYPE}" != "1" ]; then
+        if [ "${PRESERVE_MODULE_TYPE:-}" != "1" ]; then
             rename_module_type
         else
             echo "Preserving module type in package.json"
@@ -474,7 +436,7 @@ if [ "${ERROR_MSG}" = "" ]; then
 fi
 
 # Build the ReactJS project
-if [ "${ERROR_MSG}" = "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
     if [ "${UPDATE_BUILD}" = "1" ]; then
 
         # To avoid error message: "ENOENT: no such file or directory, stat './public/static'"
@@ -483,7 +445,7 @@ if [ "${ERROR_MSG}" = "" ]; then
 
         echo "Building React app... (${RUN_BUNDLER})"
 
-        if [ "$1" = "prod" ]; then
+        if [ "${1:-}" = "prod" ]; then
             echo "Building for production..."
             if [ "${RUN_BUNDLER}" = "webpack" ]; then
                 run_command="npx webpack --mode production"
@@ -511,7 +473,7 @@ if [ "${ERROR_MSG}" = "" ]; then
             fi
         fi
 
-        if [ "${ERROR_MSG}" = "" ]; then
+        if [ "${ERROR_MSG:-}" = "" ]; then
             # Copy images to build/static/media directory
             if ! source ${SCRIPTS_DIR}/build_copy_images.sh "" ""
             then
@@ -521,15 +483,16 @@ if [ "${ERROR_MSG}" = "" ]; then
     fi
 fi
 
-if [ "${ERROR_MSG}" = "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
     echo "Deploying to AWS S3..."
-    if ! aws s3 sync "${BUILD_DIR}" s3://${BUCKET_NAME} --acl bucket-owner-full-control --delete --region ${AWS_REGION} --output text
+    # No --acl: incompatible with BucketOwnerEnforced (AccessControlListNotSupported).
+    if ! aws s3 sync "${BUILD_DIR}" "s3://${BUCKET_NAME}" --delete --region "${AWS_REGION}" --output text
     then
-        ERROR_MSG="ERROR running aws s3 sync build/ s3://${BUCKET_NAME} --acl bucket-owner-full-control --delete --region ${AWS_REGION} --output text"
+        ERROR_MSG="ERROR running aws s3 sync ${BUILD_DIR}/ s3://${BUCKET_NAME} --delete --region ${AWS_REGION} --output text"
     fi
 fi
 
-if [ "${ERROR_MSG}" = "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
 
     if [ "${RUN_BUNDLER}" != "none" ]; then
         echo "Updating package.json homepage (Restore)..."
@@ -551,22 +514,18 @@ if [ "${ERROR_MSG}" = "" ]; then
     fi
 fi
 
-if [ "${ERROR_MSG}" = "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
     # Invalidate CloudFront cache
     echo "Invalidating CloudFront cache..."
-    CLOUDFRONT_CREATE_INVALIDATION_RESULT=$(aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*")
-    if [ $? -eq 0 ]; then
-        echo "Command result: $?"
+    if CLOUDFRONT_CREATE_INVALIDATION_RESULT=$(aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"); then
         echo "CLOUDFRONT_CREATE_INVALIDATION_RESULT: $CLOUDFRONT_CREATE_INVALIDATION_RESULT"
     else
-    # if ! aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"
-    # then
-        ERROR_MSG='ERROR running aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"'
+        ERROR_MSG="ERROR running aws cloudfront create-invalidation --distribution-id ${DIST_ID} --paths /*"
     fi
 fi
 
 echo ""
-if [ "${ERROR_MSG}" = "" ]; then
+if [ "${ERROR_MSG:-}" = "" ]; then
     echo "Deployment complete."
 else
     echo "ERROR: ${ERROR_MSG}"

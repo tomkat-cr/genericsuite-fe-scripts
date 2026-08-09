@@ -2,6 +2,8 @@
 # File: scripts/run_method_build.sh
 # 2025-07-02 | CR
 #
+set -euo pipefail
+
 assign_static_dir_exists() {    
     export STATIC_DIR_EXISTS="0"
     if [ -f "${STATUS_FILE}" ]; then
@@ -27,7 +29,7 @@ assign_static_dir_exists() {
 
 create_symlinks() {
     echo "Calling: ${SCRIPTS_DIR}/build_copy_images.sh \"public\" \"${REPO_BASEDIR}\""
-    sh "${SCRIPTS_DIR}/build_copy_images.sh" "public" "${REPO_BASEDIR}"
+    bash "${SCRIPTS_DIR}/build_copy_images.sh" "public" "${REPO_BASEDIR}"
 
     echo "1" > "${STATUS_FILE}"
 
@@ -40,7 +42,8 @@ create_symlinks() {
         ls -laR "${REPO_BASEDIR}/public/static"
         echo ""
         echo "Press Enter to continue"
-        read
+        read REPLY < /dev/tty
+
     fi
 }
 
@@ -52,7 +55,7 @@ remove_symlinks() {
 
 help() {
     echo ""
-    echo "Usage: sh run_method_build.sh <action> <run-method> <enviroment>"
+    echo "Usage: bash run_method_build.sh <action> <run-method> <enviroment>"
     echo ""
     echo "The action could be: build"
     echo "The run method could be: vite, webpack, react-scripts"
@@ -112,23 +115,23 @@ echo ""
 
 set -o allexport; source ".env" ; set +o allexport ;
 
-ACTION="$1"
-if [ -z "${ACTION}" ]; then
+ACTION="${1:-}"
+if [ -z "${ACTION:-}" ]; then
     help
 fi
 
-RUN_BUNDLER="$2"
-if [ "${RUN_BUNDLER}" = "" ]; then
+RUN_BUNDLER="${2:-}"
+if [ "${RUN_BUNDLER:-}" = "" ]; then
     help
 fi
 
-ENV_TYPE="$3"
-if [ "${ENV_TYPE}" = "" ]; then
+ENV_TYPE="${3:-}"
+if [ "${ENV_TYPE:-}" = "" ]; then
     help
 fi
 
-DEBUG="$4"
-if [ "${DEBUG}" = "" ]; then
+DEBUG="${4:-}"
+if [ "${DEBUG:-}" = "" ]; then
     DEBUG="1"
 fi
 

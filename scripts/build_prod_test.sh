@@ -14,6 +14,8 @@
 #
 # 2024-03-15 | CR
 #
+set -euo pipefail
+
 REPO_BASEDIR="`pwd`"
 
 # cd "`dirname "$0"`" ;
@@ -30,22 +32,22 @@ echo "SCRIPTS_DIR: ${SCRIPTS_DIR}"
 echo ""
 
 remove_symlinks() {
-    sh "${SCRIPTS_DIR}/run_symlinks_handler.sh" remove
+    bash "${SCRIPTS_DIR}/run_symlinks_handler.sh" remove
 }
 
 # Defaults
 
-if [ "${RUN_BUNDLER}" = "" ]; then
+if [ "${RUN_BUNDLER:-}" = "" ]; then
     RUN_BUNDLER="vite"
 fi
 
-RUN_MODE="$1"
-if [ "${RUN_MODE}" = "" ]; then
+RUN_MODE="${1:-}"
+if [ "${RUN_MODE:-}" = "" ]; then
     RUN_MODE="test"
 fi
 
-COPY_IMAGES="$2"
-if [ "${COPY_IMAGES}" = "" ]; then
+COPY_IMAGES="${2:-}"
+if [ "${COPY_IMAGES:-}" = "" ]; then
     COPY_IMAGES="1"
 fi
 
@@ -55,7 +57,8 @@ echo "Run mode: ${RUN_MODE}"
 if [ "${RUN_MODE}" != "build" ]; then
     echo "Press Enter to continue..."
     echo ""
-    read
+    read REPLY < /dev/tty
+
 fi
 echo ""
 
@@ -66,7 +69,7 @@ if [ "${RUN_MODE}" = "test" ]; then
     export TSCONFIG_BASE_URL=$(perl -ne 'print $1 if /"baseUrl":\s*"([^"]*)"/' tsconfig.json)
     echo "tsconfig.json TSCONFIG_BASE_URL was: ${TSCONFIG_BASE_URL}"
 
-    sh "${SCRIPTS_DIR}/run_method_dependency_manager.sh" install ${RUN_BUNDLER}
+    bash "${SCRIPTS_DIR}/run_method_dependency_manager.sh" install ${RUN_BUNDLER}
 
     if [ "${TSCONFIG_BASE_URL}" = "./src/lib" ]; then
         echo "Preparing tsconfig.json for local build test..."
@@ -150,7 +153,7 @@ if [ "${RUN_MODE}" = "restore" ]; then
     fi    
     echo "Restore package.json from local build test..."
     perl -i -pe"s|\"type1\": \"module\"|\"type\": \"module\"|g" package.json
-    if [ "${PACKAGE_JSON_HOMEPAGE}" != "" ]; then
+    if [ "${PACKAGE_JSON_HOMEPAGE:-}" != "" ]; then
         echo ""
         echo "package.json PACKAGE_JSON_HOMEPAGE will be restored to: ${PACKAGE_JSON_HOMEPAGE}"
         perl -i -pe"s|\"homepage\": \"[^\"]*\"|\"homepage\": \"${PACKAGE_JSON_HOMEPAGE}\"|g" package.json
@@ -160,10 +163,11 @@ if [ "${RUN_MODE}" = "restore" ]; then
 
     if [ "${TSCONFIG_BASE_URL}" = "./src/lib" ]; then
         export REACT_APP_REWIRED=$(perl -ne 'print $1 if /"react-app-rewired":\s*"([^"]*)"/' package.json)
-        if [ "${REACT_APP_REWIRED}" != "" ]; then
+        if [ "${REACT_APP_REWIRED:-}" != "" ]; then
             echo ""
             echo "Do you want to uninstall react-app-rewired ver. ${REACT_APP_REWIRED} ? (y/n)"
-            read answer
+            read answer < /dev/tty
+
             if [ "${answer}" = "y" ]; then
                 if npm uninstall --save-dev react-app-rewired
                 then

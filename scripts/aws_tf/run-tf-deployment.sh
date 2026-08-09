@@ -34,9 +34,9 @@ usage_abort() {
     exit 1
 }
 
-if [ "${ACTION}" = "" ]; then usage_abort "ACTION is not set"; fi
-if [ "${STAGE}" = "" ]; then usage_abort "STAGE is not set"; fi
-if [ "${STACK}" = "" ]; then usage_abort "STACK is not set"; fi
+if [ "${ACTION:-}" = "" ]; then usage_abort "ACTION is not set"; fi
+if [ "${STAGE:-}" = "" ]; then usage_abort "STAGE is not set"; fi
+if [ "${STACK:-}" = "" ]; then usage_abort "STACK is not set"; fi
 if [ ! -d "${SCRIPTS_DIR}/stacks/${STACK}" ]; then usage_abort "Unknown STACK '${STACK}'"; fi
 case "${ACTION}" in
     init|validate|plan|apply|destroy|output) ;;
@@ -69,7 +69,7 @@ APP_NAME_LOWERCASE="$(echo "${APP_NAME}" | tr '[:upper:]' '[:lower:]')"
 if [ "${AWS_ACCOUNT_ID:-}" = "" ]; then
     AWS_ACCOUNT_ID="$(aws sts get-caller-identity --output json --no-paginate 2>/dev/null | jq -r '.Account' || true)"
 fi
-if [ "${AWS_ACCOUNT_ID}" = "" ] || [ "${AWS_ACCOUNT_ID}" = "null" ]; then
+if [ "${AWS_ACCOUNT_ID:-}" = "" ] || [ "${AWS_ACCOUNT_ID}" = "null" ]; then
     echo "ERROR: AWS_ACCOUNT_ID could not be retrieved. Configure AWS credentials."
     exit 1
 fi
@@ -98,7 +98,7 @@ export TF_VAR_app_url="${APP_URL_CLEANED}"
 
 varname_cert="AWS_SSL_CERTIFICATE_ARN_${VARIABLE_TYPE}"
 TF_VAR_acm_certificate_arn="${!varname_cert:-}"
-if [ "${TF_VAR_acm_certificate_arn}" = "" ]; then
+if [ "${TF_VAR_acm_certificate_arn:-}" = "" ]; then
     TF_VAR_acm_certificate_arn="${AWS_SSL_CERTIFICATE_ARN:-}"
 fi
 export TF_VAR_acm_certificate_arn

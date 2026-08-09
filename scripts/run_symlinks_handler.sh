@@ -2,6 +2,8 @@
 # run_symlinks_handler.sh
 # 2025-04-28 | CR
 
+set -euo pipefail
+
 REPO_BASEDIR="`pwd`"
 if [ ! -f "${REPO_BASEDIR}/package.json" ]; then
     REPO_BASEDIR="`pwd`/.."
@@ -40,9 +42,9 @@ remove_symlinks() {
     fi
 }
 
-if [ "${1}" = "create" ]; then
+if [ "${1:-}" = "create" ]; then
     create_symlinks
-elif [ "${1}" = "remove" ]; then
+elif [ "${1:-}" = "remove" ]; then
     remove_symlinks
 else
     echo "Usage: ${0} [create|remove]"
