@@ -41,10 +41,10 @@ uninstall_one_bundle() {
 }
 
 install_one_bundle() {
-    bundle_installed="$1"
-    bundle_name="$2"
-    bundle_packages="$3"
-    additional_options="$4"
+    bundle_installed="${1:-}"
+    bundle_name="${2:-}"
+    bundle_packages="${3:-}"
+    additional_options="${4:-}"
     if [ "${bundle_installed:-}" = "" ]; then
         echo ""
         echo "Installing ${bundle_name} bundle..."

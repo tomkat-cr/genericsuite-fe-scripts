@@ -57,6 +57,104 @@ get_ssl_cert_arn() {
     fi
 }
 
+# Empty / sentinel values from aws --output text
+is_blank_aws_value() {
+    case "${1:-}" in
+        ""|"None"|"none"|"null"|"NULL"|"Null") return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Create or reuse CloudFront Origin Access Control (OAC) for the S3 bucket.
+# Matches scripts/aws_tf/modules/frontend-hosting (private bucket + OAC).
+# Status messages go to stderr; stdout is only the OAC id.
+ensure_cloudfront_oac() {
+    local oac_name="${BUCKET_NAME}-oac"
+    local oac_id
+    oac_id=$(aws cloudfront list-origin-access-controls \
+        --query "OriginAccessControlList.Items[?Name=='${oac_name}'].Id | [0]" \
+        --output text 2>/dev/null || true)
+    if is_blank_aws_value "${oac_id}"; then
+        echo "Creating CloudFront Origin Access Control '${oac_name}'..." >&2
+        oac_id=$(aws cloudfront create-origin-access-control \
+            --origin-access-control-config "Name=${oac_name},Description=OAC for ${BUCKET_NAME},OriginAccessControlOriginType=s3,SigningBehavior=always,SigningProtocol=sigv4" \
+            --query 'OriginAccessControl.Id' \
+            --output text)
+    else
+        echo "Reusing CloudFront Origin Access Control '${oac_name}' (${oac_id})" >&2
+    fi
+    if is_blank_aws_value "${oac_id}"; then
+        return 1
+    fi
+    printf '%s\n' "${oac_id}"
+}
+
+# Attach OAC to the distribution's first S3 origin and SPA 403/404 → index.html.
+# Previous OAI "association" only verified the identity existed and never updated
+# the distribution, which caused AccessDenied after public bucket access was removed.
+attach_oac_to_distribution() {
+    local dist_id="$1"
+    local oac_id="$2"
+    local tmp_dir etag current_oac
+
+    tmp_dir=$(mktemp -d)
+    # shellcheck disable=SC2064
+    trap "rm -rf '${tmp_dir}'" RETURN
+
+    aws cloudfront get-distribution-config --id "${dist_id}" --output json > "${tmp_dir}/dist.json"
+    etag=$(jq -r '.ETag' "${tmp_dir}/dist.json")
+    current_oac=$(jq -r '.DistributionConfig.Origins.Items[0].OriginAccessControlId // empty' "${tmp_dir}/dist.json")
+
+    if [ "${current_oac}" = "${oac_id}" ]; then
+        local has_spa_errors
+        has_spa_errors=$(jq -r '
+            [.DistributionConfig.CustomErrorResponses.Items[]? | select(.ErrorCode == 403 or .ErrorCode == 404)]
+            | length
+        ' "${tmp_dir}/dist.json")
+        if [ "${has_spa_errors}" = "2" ]; then
+            echo "Distribution ${dist_id} already uses OAC ${oac_id} with SPA error responses"
+            return 0
+        fi
+    fi
+
+    echo "Updating CloudFront distribution ${dist_id} to use OAC ${oac_id}..."
+    # Strip nulls: get-distribution-config → update-distribution rejects null optional fields.
+    jq --arg oac_id "${oac_id}" '
+      .DistributionConfig
+      | .Origins.Items[0].OriginAccessControlId = $oac_id
+      | .Origins.Items[0].S3OriginConfig = {"OriginAccessIdentity": ""}
+      | del(.Origins.Items[0].CustomOriginConfig)
+      | .CustomErrorResponses = {
+          "Quantity": 2,
+          "Items": [
+            {
+              "ErrorCode": 403,
+              "ResponsePagePath": "/index.html",
+              "ResponseCode": "200",
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 404,
+              "ResponsePagePath": "/index.html",
+              "ResponseCode": "200",
+              "ErrorCachingMinTTL": 0
+            }
+          ]
+        }
+      | walk(if type == "object" then with_entries(select(.value != null)) else . end)
+    ' "${tmp_dir}/dist.json" > "${tmp_dir}/update.json"
+
+    if ! aws cloudfront update-distribution \
+        --id "${dist_id}" \
+        --if-match "${etag}" \
+        --distribution-config "file://${tmp_dir}/update.json" \
+        --output text > /dev/null
+    then
+        return 1
+    fi
+    echo "CloudFront distribution ${dist_id} updated with OAC ${oac_id}"
+}
+
 remove_symlinks() {
     bash "${SCRIPTS_DIR}/run_symlinks_handler.sh" remove
 }
@@ -151,8 +249,10 @@ fi
 # Deploy to S3
 if [ "${ERROR_MSG:-}" = "" ]; then
     echo "Verifying AWS S3 bucket $BUCKET_NAME existence..."
-    S3_BUCKET_NOT_FOUND=$(aws s3api head-bucket --bucket $BUCKET_NAME  --region ${AWS_REGION} 2>&1 | grep -c 'Not Found')
-    # if ! aws s3api head-bucket --bucket $BUCKET_NAME --region ${AWS_REGION} --output text
+    if ! S3_BUCKET_NOT_FOUND=$(aws s3api head-bucket --bucket "${BUCKET_NAME}" --region "${AWS_REGION}" 2>&1 | grep -c 'Not Found')
+    then
+        echo "WARNING: running aws s3api head-bucket --bucket ${BUCKET_NAME} --region ${AWS_REGION} returned non-zero exit code ($?). Continuing..."
+    fi
     echo "S3_BUCKET_NOT_FOUND: ${S3_BUCKET_NOT_FOUND}"
     if [ "${S3_BUCKET_NOT_FOUND}" = "1" ];then
 
@@ -172,8 +272,14 @@ if [ "${ERROR_MSG:-}" = "" ]; then
         fi
         if [ "${ERROR_MSG:-}" = "" ]; then
             # Align with Terraform frontend-hosting module: private bucket, ACLs off.
-            aws s3api put-bucket-ownership-controls --bucket "$BUCKET_NAME" --ownership-controls 'Rules=[{ObjectOwnership=BucketOwnerEnforced}]' --region "${AWS_REGION}" --output text
-            aws s3api put-public-access-block --bucket "$BUCKET_NAME" --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" --region "${AWS_REGION}" --output text
+            if ! aws s3api put-bucket-ownership-controls --bucket "$BUCKET_NAME" --ownership-controls 'Rules=[{ObjectOwnership=BucketOwnerEnforced}]' --region "${AWS_REGION}" --output text
+            then
+                echo "WARNING: could not put bucket ownership controls - Region: ${AWS_REGION}. Continuing..."
+            fi
+            if ! aws s3api put-public-access-block --bucket "$BUCKET_NAME" --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" --region "${AWS_REGION}" --output text
+            then
+                echo "WARNING: could not put public access block - Region: ${AWS_REGION}. Continuing..."
+            fi
         fi
     else
         echo "AWS S3 bucket $BUCKET_NAME exists..."
@@ -183,17 +289,23 @@ fi
 if [ "${ERROR_MSG:-}" = "" ]; then
     echo "Creating/verifying the AWS Cloudfront distribution..."
 
-    # Get CloudFront distribution ID
+    S3_ORIGIN_DOMAIN="${BUCKET_NAME}.s3.${AWS_REGION}.amazonaws.com"
+    S3_ORIGIN_DOMAIN_LEGACY="${BUCKET_NAME}.s3.amazonaws.com"
+
+    # Get CloudFront distribution ID (regional or legacy S3 origin domain)
     echo "Getting CloudFront distribution ID..."
     DIST_ID=$(aws cloudfront list-distributions \
-    --query "DistributionList.Items[?Origins.Items[0].DomainName=='${BUCKET_NAME}.s3.amazonaws.com'].{Id:Id}[0]" \
-    --output text)
-    echo "CloudFront Distribution ID: $DIST_ID"
+        --query "DistributionList.Items[?Origins.Items[0].DomainName=='${S3_ORIGIN_DOMAIN}' || Origins.Items[0].DomainName=='${S3_ORIGIN_DOMAIN_LEGACY}'].Id | [0]" \
+        --output text)
+    if is_blank_aws_value "${DIST_ID}"; then
+        DIST_ID=""
+    fi
+    echo "CloudFront Distribution ID: ${DIST_ID:-}"
 
     # Verify existence of CloudFront distribution ID
     echo "Verifying CloudFront distribution ID..."
     if [ "${DIST_ID:-}" != "" ]; then
-        if aws cloudfront get-distribution --id ${DIST_ID} --no-paginate > /dev/null 2>&1; then
+        if aws cloudfront get-distribution --id "${DIST_ID}" --no-paginate > /dev/null 2>&1; then
             echo "CloudFront Distribution ${DIST_ID} exists"
         else
             echo "CloudFront Distribution ${DIST_ID} does not exist"
@@ -201,8 +313,17 @@ if [ "${ERROR_MSG:-}" = "" ]; then
         fi
     fi
 
+    # OAC must exist before create/update so CloudFront can sign requests to the private bucket
+    if [ "${ERROR_MSG:-}" = "" ]; then
+        if ! OAC_ID=$(ensure_cloudfront_oac); then
+            ERROR_MSG="ERROR creating/finding CloudFront Origin Access Control for '${BUCKET_NAME}'"
+        else
+            echo "CloudFront OAC ID: ${OAC_ID}"
+        fi
+    fi
+
     # Creating CloudFront distribution
-    if [ "${DIST_ID:-}" = "" ]; then
+    if [ "${ERROR_MSG:-}" = "" ] && [ "${DIST_ID:-}" = "" ]; then
         echo ""
         echo "Fetching ACM Certificate ARN for ${APP_URL} to create the CloudFront distribution..."
         domain="${APP_URL}"
@@ -218,17 +339,76 @@ if [ "${ERROR_MSG:-}" = "" ]; then
             if [ "${ERROR_MSG:-}" = "" ]; then
                 echo "Proceeding with no domain association..."
                 DIST_ID=$(aws cloudfront create-distribution \
-                --origin-domain-name ${BUCKET_NAME}.s3.amazonaws.com \
-                --default-root-object index.html \
-                --output text \
-                --query 'Distribution.Id')
+                    --distribution-config "{
+                        \"CallerReference\": \"${BUCKET_NAME}-distribution\",
+                        \"Comment\": \"CloudFront Distribution for '${BUCKET_NAME}'\",
+                        \"Enabled\": true,
+                        \"DefaultRootObject\": \"index.html\",
+                        \"Origins\": {
+                            \"Quantity\": 1,
+                            \"Items\": [
+                                {
+                                    \"Id\": \"${S3_ORIGIN_DOMAIN}\",
+                                    \"DomainName\": \"${S3_ORIGIN_DOMAIN}\",
+                                    \"OriginPath\": \"\",
+                                    \"CustomHeaders\": { \"Quantity\": 0 },
+                                    \"S3OriginConfig\": { \"OriginAccessIdentity\": \"\" },
+                                    \"OriginAccessControlId\": \"${OAC_ID}\"
+                                }
+                            ]
+                        },
+                        \"DefaultCacheBehavior\": {
+                            \"TargetOriginId\": \"${S3_ORIGIN_DOMAIN}\",
+                            \"ViewerProtocolPolicy\": \"redirect-to-https\",
+                            \"AllowedMethods\": {
+                                \"Quantity\": 3,
+                                \"Items\": [\"GET\", \"HEAD\", \"OPTIONS\"],
+                                \"CachedMethods\": { \"Quantity\": 2, \"Items\": [\"GET\", \"HEAD\"] }
+                            },
+                            \"ForwardedValues\": {
+                                \"QueryString\": false,
+                                \"Cookies\": { \"Forward\": \"none\" },
+                                \"Headers\": { \"Quantity\": 0 },
+                                \"QueryStringCacheKeys\": { \"Quantity\": 0 }
+                            },
+                            \"MinTTL\": 0,
+                            \"Compress\": true
+                        },
+                        \"CustomErrorResponses\": {
+                            \"Quantity\": 2,
+                            \"Items\": [
+                                {
+                                    \"ErrorCode\": 403,
+                                    \"ResponsePagePath\": \"/index.html\",
+                                    \"ResponseCode\": \"200\",
+                                    \"ErrorCachingMinTTL\": 0
+                                },
+                                {
+                                    \"ErrorCode\": 404,
+                                    \"ResponsePagePath\": \"/index.html\",
+                                    \"ResponseCode\": \"200\",
+                                    \"ErrorCachingMinTTL\": 0
+                                }
+                            ]
+                        },
+                        \"Restrictions\": {
+                            \"GeoRestriction\": { \"RestrictionType\": \"none\", \"Quantity\": 0 }
+                        },
+                        \"ViewerCertificate\": {
+                            \"CloudFrontDefaultCertificate\": true,
+                            \"MinimumProtocolVersion\": \"TLSv1\"
+                        }
+                    }" \
+                    --output text \
+                    --query 'Distribution.Id')
             fi
         else
             # Check if CloudFront distribution already exists for the domain
-            DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Aliases.Items[0]=='${APP_URL}'].{Id:Id}[0]" --output text)
-            if [ "${DIST_ID:-}" != "" ] && [ "${DIST_ID}" != "None" ] && [ "${DIST_ID}" != "null" ] && [ "${DIST_ID}" != "NULL" ] && [ "${DIST_ID}" != "Null" ]; then
+            DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Aliases.Items[0]=='${APP_URL}'].Id | [0]" --output text)
+            if ! is_blank_aws_value "${DIST_ID}"; then
                 echo "CloudFront distribution already exists for the domain ${APP_URL}"
             else
+                DIST_ID=""
                 # https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/example_cloudfront_CreateDistribution_section.html
 
                 echo "Creating CloudFront distribution..."
@@ -245,15 +425,16 @@ if [ "${ERROR_MSG:-}" = "" ]; then
                         \"Quantity\": 1,
                         \"Items\": [
                             {
-                                \"Id\": \"${BUCKET_NAME}.s3.amazonaws.com\",
-                                \"DomainName\": \"${BUCKET_NAME}.s3.amazonaws.com\",
+                                \"Id\": \"${S3_ORIGIN_DOMAIN}\",
+                                \"DomainName\": \"${S3_ORIGIN_DOMAIN}\",
                                 \"OriginPath\": \"\",
                                 \"CustomHeaders\": {
                                     \"Quantity\": 0
                                 },
                                 \"S3OriginConfig\": {
                                     \"OriginAccessIdentity\": \"\"
-                                }
+                                },
+                                \"OriginAccessControlId\": \"${OAC_ID}\"
                             }
                         ]
                     },
@@ -265,7 +446,13 @@ if [ "${ERROR_MSG:-}" = "" ]; then
                         \"MinimumProtocolVersion\": \"TLSv1.2_2019\"
                     },
                     \"DefaultCacheBehavior\": {
-                        \"TargetOriginId\": \"${BUCKET_NAME}.s3.amazonaws.com\",
+                        \"TargetOriginId\": \"${S3_ORIGIN_DOMAIN}\",
+                        \"ViewerProtocolPolicy\": \"redirect-to-https\",
+                        \"AllowedMethods\": {
+                            \"Quantity\": 3,
+                            \"Items\": [\"GET\", \"HEAD\", \"OPTIONS\"],
+                            \"CachedMethods\": { \"Quantity\": 2, \"Items\": [\"GET\", \"HEAD\"] }
+                        },
                         \"ForwardedValues\": {
                             \"QueryString\": false,
                             \"Cookies\": {
@@ -279,13 +466,34 @@ if [ "${ERROR_MSG:-}" = "" ]; then
                             }
                         },
                         \"MinTTL\": 0,
-                        \"ViewerProtocolPolicy\": \"allow-all\"
+                        \"Compress\": true
+                    },
+                    \"CustomErrorResponses\": {
+                        \"Quantity\": 2,
+                        \"Items\": [
+                            {
+                                \"ErrorCode\": 403,
+                                \"ResponsePagePath\": \"/index.html\",
+                                \"ResponseCode\": \"200\",
+                                \"ErrorCachingMinTTL\": 0
+                            },
+                            {
+                                \"ErrorCode\": 404,
+                                \"ResponsePagePath\": \"/index.html\",
+                                \"ResponseCode\": \"200\",
+                                \"ErrorCachingMinTTL\": 0
+                            }
+                        ]
+                    },
+                    \"Restrictions\": {
+                        \"GeoRestriction\": { \"RestrictionType\": \"none\", \"Quantity\": 0 }
                     }
                 }" \
                 --output text \
                 --query 'Distribution.Id')
 
-                if [ "${DIST_ID:-}" = "" ]; then
+                if is_blank_aws_value "${DIST_ID}"; then
+                    DIST_ID=""
                     ERROR_MSG="ERROR: the cloudfront create-distribution for S3 bucket '${BUCKET_NAME}' and Domain '${APP_URL}' failed..."
                     continue_or_stop
                 fi
@@ -294,41 +502,24 @@ if [ "${ERROR_MSG:-}" = "" ]; then
     fi
 
     if [ "${ERROR_MSG:-}" = "" ]; then
-        echo ""
-        echo "CloudFront distribution ID: $DIST_ID"
-        echo ""
-        echo "Getting the OAI associated with the distribution..."
-        OAI_ID=$(aws cloudfront get-distribution --id ${DIST_ID} --query 'Distribution.ActiveTrustedSigners.Enabled' --output text)
-        echo "OAI ID: $OAI_ID"
-
-        if [ "${OAI_ID}" = "False" ]; then
-            echo "OAI is not enabled. Enabling OAI..."
-            OAI_ID=$(aws cloudfront create-cloud-front-origin-access-identity --cloud-front-origin-access-identity-config CallerReference=caller-ref-${BUCKET_NAME},Comment=comment-${BUCKET_NAME} --query 'CloudFrontOriginAccessIdentity.Id' --output text)
-            echo "OAI ID: $OAI_ID"
-            if [ "${OAI_ID:-}" = "" ]; then
-                ERROR_MSG="ERROR creating OAI"
-            fi
+        if is_blank_aws_value "${DIST_ID}"; then
+            ERROR_MSG="ERROR: CloudFront distribution ID is empty"
+        else
+            echo ""
+            echo "CloudFront distribution ID: $DIST_ID"
         fi
     fi
 fi
 
 if [ "${ERROR_MSG:-}" = "" ]; then
-    # Associate the OAI with the distribution:
-    echo "Verifying association of OAI with the distribution..."            
-
-    OAI_VERIF=$(aws cloudfront get-cloud-front-origin-access-identity --id ${OAI_ID} --output text)
-    echo "OAI_VERIF: $OAI_VERIF"
-
-    OAI_VERIF_CONFIG=$(aws cloudfront get-cloud-front-origin-access-identity-config --id ${OAI_ID} --output text)
-    echo "OAI_VERIF_CONFIG: $OAI_VERIF_CONFIG"
-
-    if [ "${OAI_VERIF_CONFIG:-}" = "" ]; then
-        ERROR_MSG="ERROR associating the OAI with the distribution"
+    # Attach OAC to existing distributions that were created without it (fixes AccessDenied).
+    if ! attach_oac_to_distribution "${DIST_ID}" "${OAC_ID}"; then
+        ERROR_MSG="ERROR attaching CloudFront OAC '${OAC_ID}' to distribution '${DIST_ID}'"
     fi
 fi
 
 if [ "${ERROR_MSG:-}" = "" ]; then
-    # Keep the bucket private: only the CloudFront OAI may GetObject.
+    # Keep the bucket private: only the CloudFront distribution (via OAC) may GetObject.
     # Do not add Principal:"*" (PublicReadGetObject) — that bypasses CloudFront.
     # Do not use bucket/object ACLs: Object Ownership is BucketOwnerEnforced.
     echo "Ensuring Object Ownership is BucketOwnerEnforced and public access is blocked..."
@@ -337,23 +528,28 @@ if [ "${ERROR_MSG:-}" = "" ]; then
 fi
 
 if [ "${ERROR_MSG:-}" = "" ]; then
-    # Add permissions to the S3 bucket policy to allow access from the OAI only:
-    echo "Adding permissions to the S3 bucket policy to allow access from the OAI..."
+    # Grant s3:GetObject only to this CloudFront distribution (OAC), matching frontend-hosting TF module.
+    echo "Adding permissions to the S3 bucket policy to allow access from CloudFront OAC..."
     S3_BUCKET_POLICY="{
 \"Version\":\"2012-10-17\",
 \"Statement\":[
     {
-        \"Sid\":\"AllowCloudFrontOAIAccess\",
+        \"Sid\":\"AllowCloudFrontOACAccess\",
         \"Effect\":\"Allow\",
-        \"Principal\":{\"AWS\":\"arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${OAI_ID}\"},
+        \"Principal\":{\"Service\":\"cloudfront.amazonaws.com\"},
         \"Action\":\"s3:GetObject\",
-        \"Resource\":\"arn:aws:s3:::${BUCKET_NAME}/*\"
+        \"Resource\":\"arn:aws:s3:::${BUCKET_NAME}/*\",
+        \"Condition\":{
+            \"StringEquals\":{
+                \"AWS:SourceArn\":\"arn:aws:cloudfront::${AWS_ACCOUNT_ID}:distribution/${DIST_ID}\"
+            }
+        }
     }
 ]
 }"
     echo "S3_BUCKET_POLICY: $S3_BUCKET_POLICY"
     if BUCKET_POLICY_RESULT=$(aws s3api put-bucket-policy --bucket "${BUCKET_NAME}" --policy "${S3_BUCKET_POLICY}" --output text); then
-        echo "S3 bucket policy updated (OAI-only; bucket remains private)"
+        echo "S3 bucket policy updated (CloudFront OAC-only; bucket remains private)"
         echo "BUCKET_POLICY_RESULT: $BUCKET_POLICY_RESULT"
 
         echo $(aws s3api get-bucket-policy --bucket "${BUCKET_NAME}" --output text)
@@ -364,10 +560,10 @@ if [ "${ERROR_MSG:-}" = "" ]; then
         echo "${ERROR_MSG}"
         echo ""
         echo "The bucket policy could not be applied. Keep 'Block all public access' enabled;"
-        echo "this script only grants s3:GetObject to the CloudFront OAI (not anonymous public read)."
+        echo "this script only grants s3:GetObject to CloudFront OAC (not anonymous public read)."
         echo ""
         echo "Check that:"
-        echo "  - The OAI ID '${OAI_ID}' is valid"
+        echo "  - The OAC ID '${OAC_ID}' is attached to distribution '${DIST_ID}'"
         echo "  - Your credentials allow s3:PutBucketPolicy on '${BUCKET_NAME}'"
         echo "  - Object Ownership is BucketOwnerEnforced (ACLs disabled)"
         echo ""
