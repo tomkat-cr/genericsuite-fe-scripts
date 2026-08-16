@@ -11,8 +11,8 @@
     "README.md"
   ],
   "scripts": {
-    "publish": "bash scripts/npm_publish.sh publish",
-    "pre-publish": "bash scripts/npm_publish.sh pre-publish",
+    "npm-publish": "bash scripts/npm_publish.sh publish",
+    "npm-pre-publish": "bash scripts/npm_publish.sh pre-publish",
     "test": "echo \"No test necessary for genericsuite-fe-scripts\"",
     "build": "echo \"No build necessary for genericsuite-fe-scripts\""
   },

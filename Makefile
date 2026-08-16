@@ -1,5 +1,5 @@
 # .DEFAULT_GOAL := local
-# .PHONY: tests
+.PHONY: publish pre-publish clean fresh test-dev test test-run-build test-run-build-restore eject-dev config config_qa config_demo deploy deploy_qa deploy_demo run run_qa run_prod server start local tailwind tailwind-build add_submodules create_ssl_certs copy_ssl_certs config_lib run_lib sast-test
 SHELL := /bin/bash
 
 # General Commands
@@ -107,16 +107,10 @@ run_lib: config_lib
 sast-test:
 	bash ./node_modules/genericsuite-fe-scripts/scripts/sast_test.sh
 
-pre-publish: sast-test
-	bash ./node_modules/genericsuite-fe-scripts/scripts/npm_publish.sh pre-publish
+pre-publish:
+	@echo "No pre-publish necessary for genericsuite-fe-scripts"
 
 publish:
-	#
-	# To publish the package to NPMJS checking the test snapshots:
-	#    make publish
-	#
-	# To solve the test errors when there are changes in the UI
-	# not reflected in the test snapshots:
-	#    UPDATE_SNAPSHOTS=1 make publish
-	#
-	bash ./node_modules/genericsuite-fe-scripts/scripts/npm_publish.sh publish
+	@echo "Are you sure you want to publish genericsuite-fe-scripts? (Ctrl-C to cancel)"
+	@read answer < /dev/tty
+	npm publish --access=public
