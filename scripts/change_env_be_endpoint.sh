@@ -7,13 +7,13 @@ set -euo pipefail
 replace_var_in_dot_env() {
     echo ""
     SOURCE_ENV_VARNAME="${varname}_${ENV_UPPERCASE}"
-    SOURCE_ENV_VARNAME_VALUE="${!SOURCE_ENV_VARNAME}"
-    echo "Updating ${target_varname} variable from ${SOURCE_ENV_VARNAME} in .env file for: ${ENV_UPPERCASE} ..."
-    echo "Current ${target_varname} value: ${!target_varname}"
-    echo "New value from ${SOURCE_ENV_VARNAME}: ${SOURCE_ENV_VARNAME_VALUE}"
-    if ! perl -i -pe"s|^${target_varname}=.*|${target_varname}=${SOURCE_ENV_VARNAME_VALUE}|" ${ENV_FILESPEC}
+    SOURCE_ENV_VARNAME_VALUE="${!SOURCE_ENV_VARNAME:-}"
+    echo "Updating ${target_varname:-} variable from ${SOURCE_ENV_VARNAME:-} in .env file for: ${ENV_UPPERCASE} ..."
+    echo "Current ${target_varname:-} value: ${!target_varname:-}"
+    echo "New value from ${SOURCE_ENV_VARNAME:-}: ${SOURCE_ENV_VARNAME_VALUE:-}"
+    if ! perl -i -pe"s|^${target_varname:-}=.*|${target_varname:-}=${SOURCE_ENV_VARNAME_VALUE:-}|" ${ENV_FILESPEC:-}
     then
-        ERROR_MSG="ERROR updating .env file [${target_varname} / ${varname}]"
+        ERROR_MSG="ERROR updating .env file [${target_varname:-} / ${varname:-}]"
     fi
 }
 
