@@ -1,0 +1,34 @@
+{
+  "name": "genericsuite-fe-scripts",
+  "version": "1.0.0",
+  "description": "GenericSuite Scripts (frontend version)",
+  "author": "Carlos J. Ramirez <info@genericsuite.com>",
+  "license": "MIT",
+  "files": [
+    "scripts",
+    "Makefile",
+    "CHANGELOG.md",
+    "README.md"
+  ],
+  "scripts": {
+    "npm-publish": "bash scripts/npm_publish.sh publish",
+    "npm-pre-publish": "bash scripts/npm_publish.sh pre-publish",
+    "test": "echo \"No test necessary for genericsuite-fe-scripts\"",
+    "build": "echo \"No build necessary for genericsuite-fe-scripts\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tomkat-cr/genericsuite-fe-scripts.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tomkat-cr/genericsuite-fe-scripts/issues"
+  },
+  "homepage": "https://genericsuite.carlosjramirez.com/Backend-Development/GenericSuite-Scripts/",
+  "keywords": [
+    "bash",
+    "genericsuite",
+    "aws",
+    "reactjs",
+    "aws-cloudfront"
+  ]
+}
