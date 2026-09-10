@@ -17,6 +17,12 @@ This project adheres to [Semantic Versioning](http://semver.org/) and [Keep a Ch
 ### Security
 
 
+## [Unreleased] - YYYY-MM-DD
+
+### Added
+- "lock" command added to "make publish" to update the package.json file [GS-339].
+
+
 ## [1.0.0] - 2026-08-30
 
 ### Added

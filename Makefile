@@ -110,7 +110,7 @@ sast-test:
 pre-publish:
 	@echo "No pre-publish necessary for genericsuite-fe-scripts"
 
-publish:
+publish: lock
 	@echo "Are you sure you want to publish genericsuite-fe-scripts? (Ctrl-C to cancel)"
 	@read answer < /dev/tty
 	npm publish --access=public
